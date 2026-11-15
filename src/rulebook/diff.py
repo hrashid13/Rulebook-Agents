@@ -90,9 +90,10 @@ def changed_lines(repo: str | Path, base: str, *, merge_base: bool = True) -> di
 
 
 def has_commit(repo: str | Path, sha: str) -> bool:
+    # Not `cat-file -e <sha>^{commit}`: Git for Windows expands the braces in arguments
+    # and sees `<sha>^commit`, so an existing commit would look missing.
     try:
-        _git(Path(repo), "cat-file", "-e", f"{sha}^{{commit}}")
-        return True
+        return _git(Path(repo), "cat-file", "-t", sha).strip() == "commit"
     except DiffError:
         return False
 
