@@ -1,8 +1,8 @@
 """The GitHub Action: read the event, run the matching flow, report back.
 
-    pull_request   review the PR (M2)
-    push / workflow_dispatch   rules flow (M3, not built yet)
-    issue_comment  `/rulebook file N` (M4, not built yet)
+    pull_request               review the PR
+    push / workflow_dispatch   rules flow: policies.md -> tested Semgrep rules, opened as a PR
+    issue_comment              `/rulebook file N` (M4, not built yet)
 
 Security rules this file keeps (see docs/DESIGN.md):
   * Policies, rules and config come from the BASE commit, never from the PR. A PR cannot
@@ -28,11 +28,18 @@ from .diff import DiffError, _git, changed_lines, ensure_commit, export_folder
 from .github import DEFAULT_AUTHOR, GitHub, GitHubError
 from .llm import LLMClient, LLMError
 from .policies import PolicyError, load_policies
-from .render import MARKER, data_block, failure_markdown, to_markdown
+from .github import MAX_COMMENT
+from .render import MARKER, data_block, escape, failure_markdown, to_markdown
+from .ruleset import apply, detect_languages, make_plan, summary_markdown
+from .synthesize import synthesize
 from .review import ReviewInputs, run_review, should_fail
 from .semgrep import SemgrepError, SemgrepNotInstalled
 
 MAX_ANNOTATIONS = 50
+RULES_BRANCH = "rulebook/rules"
+RULES_MARKER = "<!-- rulebook-agents:rules -->"
+BOT_NAME = "github-actions[bot]"
+BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 _LEVEL = {"error": "error", "warning": "warning", "info": "notice"}
 
 
@@ -119,9 +126,7 @@ class Action:
                                       "gives untrusted PR code your secrets. Use pull_request."))
             return 1
         if event_name in ("push", "workflow_dispatch"):
-            self.say(command("notice", "The rules flow (policies.md to Semgrep rules) is not built yet "
-                                       "(milestone M3). Nothing to do."))
-            return 0
+            return self.rules_flow()
         if event_name == "issue_comment":
             self.say(command("notice", "`/rulebook file` is not built yet (milestone M4). Nothing to do."))
             return 0
@@ -217,6 +222,125 @@ class Action:
         self.output(problems=len(report.findings), dismissed=len(report.dismissed),
                     status="problems" if report.findings else "clean")
         return 1 if failed else 0
+
+
+    # ------------------------------------------------------------------ rules flow
+
+    def rules_flow(self) -> int:
+        """policies.md on the default branch -> rules on the branch `rulebook/rules` -> one PR.
+
+        Only the default branch's policies are trusted (people merged them). The branch is
+        rebuilt from the default branch on every run and force-pushed, unless someone has
+        pushed their own commits to it: then it is left alone and the PR says why."""
+        event = self._event()
+        default = (event.get("repository") or {}).get("default_branch") or ""
+        ref = self.env.get("GITHUB_REF_NAME", "")
+        if not default or ref != default:
+            self.say(command("notice", f"The rules flow only runs on the default branch ({default or 'unknown'}), "
+                                       f"not {ref or 'this ref'}. Nothing to do."))
+            return 0
+        rb = self.workspace / ".rulebook"
+        if not (rb / "policies.md").exists():
+            self.say(command("notice", "No .rulebook/policies.md on the default branch. Nothing to do."))
+            return 0
+        gh = self._gh()
+        if gh is None:
+            self.say(command("error", "The rules flow needs github-token to open a pull request."))
+            return 1
+        try:
+            policies = load_policies(rb / "policies.md")
+            config = load_config(rb / "config.yml")
+        except (PolicyError, ConfigError) as exc:
+            self.say(command("error", f"Rulebook Agents: .rulebook/ has a problem: {exc}"))
+            self.summary(f"## Rulebook Agents\n\n.rulebook/ has a problem: {escape(str(exc))}\n")
+            return 1
+
+        plan = make_plan(policies, rb / "rules", config.languages or detect_languages(self.workspace))
+        existing_pr = gh.open_pull_request(RULES_BRANCH)
+        if not plan.has_work:
+            msg = "Every policy's rules are up to date."
+            if plan.problems:
+                msg += " Some policies need attention; see the job summary."
+            self.say(command("notice", msg))
+            self.summary("## Rulebook Agents\n\n" + summary_markdown(plan, [], policies) + "\n")
+            self.output(rules_written=0, rules_failed=0, status="up-to-date")
+            return 0
+
+        humans = self._human_commits_on_rules_branch(default)
+        if humans:
+            note = (f"Rulebook Agents did not update this pull request: the `{RULES_BRANCH}` branch has "
+                    f"{humans} commit{'s' if humans != 1 else ''} pushed by people, and it will not overwrite "
+                    "them. Merge or close this pull request, then run the Rulebook workflow again to pick up "
+                    "the latest policies.")
+            if existing_pr:
+                gh.comment(existing_pr["number"], note)
+            self.say(command("warning", f"The {RULES_BRANCH} branch has commits from people; not overwriting it."))
+            self.output(rules_written=0, rules_failed=0, status="blocked")
+            return 0
+
+        try:
+            llm = self.llm or LLMClient.from_env(model=config.model)
+            results = []
+            for t in plan.targets:
+                r = synthesize(t.policy, t.language, llm, workdir=self.temp)
+                self.say(f"Rulebook Agents: {t.policy.id} ({t.language}): "
+                         f"{'passed' if r.ok else 'failed'} after {r.attempts} attempt(s).")
+                results.append(r)
+        except (SemgrepNotInstalled, SemgrepError) as exc:
+            self.say(command("error", f"Rulebook Agents: Semgrep failed: {exc}"))
+            return 1
+        except LLMError as exc:
+            self.say(command("error", f"Rulebook Agents: the model call failed, no rules were written ({exc})"))
+            return 1
+
+        written, failed = sum(r.ok for r in results), sum(not r.ok for r in results)
+        body = summary_markdown(plan, results, policies)
+        if not written and not plan.remove:
+            self.say(command("warning", "No rule could be generated; see the job summary."))
+            self.summary("## Rulebook Agents\n\n" + body + "\n")
+            self.output(rules_written=0, rules_failed=failed, status="failed")
+            return 1
+
+        _git(self.workspace, "checkout", "-q", "-B", RULES_BRANCH)
+        apply(plan, results, rb / "rules")
+        _git(self.workspace, "add", "-A", "--", ".rulebook/rules")
+        _git(self.workspace, "-c", f"user.name={BOT_NAME}", "-c", f"user.email={BOT_EMAIL}",
+             "commit", "-q", "-m", f"Rulebook: {written} rule(s) from policies.md",
+             "-m", "Generated by Rulebook Agents and tested with semgrep --test. Merging puts them into effect.")
+        _git(self.workspace, "push", "-q", "--force", "origin", f"HEAD:refs/heads/{RULES_BRANCH}")
+
+        title = f"Rulebook: rules for {written} polic{'y' if written == 1 else 'ies'}" + \
+                (f" ({failed} need a hand-written rule)" if failed else "")
+        pr_body = (f"{RULES_MARKER}\n## Rulebook Agents: rule updates\n\n"
+                   "These Semgrep rules were written from `.rulebook/policies.md` and each one passed "
+                   "`semgrep --test` against its test file. **Merging this pull request is what puts them "
+                   "into effect.** Review each rule like any code; edits you make here are kept.\n\n"
+                   f"{body}\n\n<sub>Opened by GitHub Actions, so your other workflows don't run on it "
+                   "automatically. Close and reopen it to run them.</sub>\n")[:MAX_COMMENT]
+        try:
+            if existing_pr:
+                pr = gh.update_pull_request(existing_pr["number"], title=title, body=pr_body)
+            else:
+                pr = gh.create_pull_request(branch=RULES_BRANCH, base=default, title=title, body=pr_body)
+        except GitHubError as exc:
+            self.say(command("error", f"Rulebook Agents: the rules are on the {RULES_BRANCH} branch, "
+                                      f"but the pull request could not be opened: {exc}"))
+            self.summary("## Rulebook Agents\n\n" + body + "\n")
+            return 1
+        self.say(f"Rulebook Agents: pull request #{pr.get('number')} has {written} rule(s).")
+        self.summary(f"## Rulebook Agents\n\nPull request #{pr.get('number')}.\n\n{body}\n")
+        self.output(rules_written=written, rules_failed=failed, status="pull-request")
+        return 0
+
+    def _human_commits_on_rules_branch(self, default: str) -> int:
+        """How many commits on the rules branch (beyond the default branch) were not made by the bot."""
+        if not _git(self.workspace, "ls-remote", "--heads", "origin", RULES_BRANCH).strip():
+            return 0
+        _git(self.workspace, "fetch", "-q", "--no-tags", "origin",
+             f"+refs/heads/{RULES_BRANCH}:refs/remotes/origin/{RULES_BRANCH}",
+             f"+refs/heads/{default}:refs/remotes/origin/{default}")
+        authors = _git(self.workspace, "log", "--format=%ae", f"origin/{default}..origin/{RULES_BRANCH}").split()
+        return sum(1 for a in authors if a != BOT_EMAIL)
 
 
 def main(env: Optional[Mapping[str, str]] = None) -> int:

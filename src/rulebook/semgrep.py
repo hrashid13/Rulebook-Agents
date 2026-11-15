@@ -64,6 +64,40 @@ def run_semgrep(config: str | Path, targets: Sequence[str], *, cwd: str | Path,
         raise SemgrepError(f"semgrep exited {proc.returncode} without JSON output: {tail}") from exc
 
 
+def run_semgrep_test(folder: str | Path, *, timeout_s: int = 300) -> dict[str, dict[str, Any]]:
+    """`semgrep --test` on a folder of rules and their test files (same name, the language's
+    extension, with `ruleid:` / `ok:` comments). Returns {rule id: {passed, expected,
+    reported, errors}}."""
+    exe = find_semgrep()
+    if not exe:
+        raise SemgrepNotInstalled()
+    folder = Path(folder)
+    cmd = [exe, "--test", "--json", "--metrics=off", "--disable-version-check", "--quiet", str(folder)]
+    try:
+        proc = subprocess.run(cmd, cwd=folder, capture_output=True, text=True, encoding="utf-8",
+                              stdin=subprocess.DEVNULL, check=False, timeout=timeout_s)
+    except subprocess.TimeoutExpired as exc:
+        raise SemgrepError(f"semgrep --test timed out after {timeout_s}s") from exc
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        tail = (proc.stderr or proc.stdout or "").strip()[-500:]
+        raise SemgrepError(f"semgrep --test exited {proc.returncode} without JSON output: {tail}") from exc
+    out: dict[str, dict[str, Any]] = {}
+    for config in (data.get("results") or {}).values():
+        for rule_id, check in (config.get("checks") or {}).items():
+            expected, reported = [], []
+            for match in (check.get("matches") or {}).values():
+                expected += match.get("expected_lines") or []
+                reported += match.get("reported_lines") or []
+            out[rule_id.rsplit(".", 1)[-1]] = {
+                "passed": bool(check.get("passed")),
+                "expected": sorted(expected), "reported": sorted(reported),
+                "errors": [" ".join(str(e.get("message", e)).split())[:300] for e in check.get("errors") or []],
+            }
+    return out
+
+
 def read_snippet(repo: Path, path: str, start: int, end: int, fallback: str = "") -> str:
     """The matched code, read from the file (Semgrep without a login returns the text
     "requires login" instead of the code)."""

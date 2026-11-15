@@ -253,7 +253,7 @@ def test_refuses_pull_request_target(tmp_path):
 
 
 def test_later_milestones_are_a_no_op(tmp_path):
-    for event in ("push", "workflow_dispatch", "issue_comment", "schedule"):
+    for event in ("issue_comment", "schedule"):
         out = io.StringIO()
         assert Action({"GITHUB_EVENT_NAME": event}, out=out).run() == 0
         assert out.getvalue().startswith("::notice::")

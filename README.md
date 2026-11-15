@@ -8,15 +8,18 @@ Write your team's coding rules in plain English. Rulebook Agents turns each one 
 
 Works with any language Semgrep supports, and any model with an Anthropic or OpenAI-compatible API.
 
-> **Status: early development.** Reviews work, locally and as a GitHub Action. Rules are written by hand until rule generation (M3) lands. The design is in [docs/DESIGN.md](docs/DESIGN.md).
+> **Status: early development.** Rule generation and reviews work, locally and as a GitHub Action. The design is in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Use it on your pull requests (GitHub Action)
 
-1. **Add your rules** on your default branch: `.rulebook/policies.md` (your policies in plain English; see [examples/policies.md](examples/policies.md)) and `.rulebook/rules/` (Semgrep rules, each with `metadata.policy` set to the policy's id; see [tests/fixtures](tests/fixtures) for examples in five languages). The Action always reads these **from the base branch**, so a pull request cannot change the rules it is checked against.
-2. **Add your API key** as a repository secret named `ANTHROPIC_API_KEY` (Settings > Secrets and variables > Actions).
+1. **Add your API key** as a repository secret named `ANTHROPIC_API_KEY` (Settings > Secrets and variables > Actions).
+2. **Let Actions open pull requests:** Settings > Actions > General > Workflow permissions > tick "Allow GitHub Actions to create and approve pull requests".
 3. **Add the workflow:** copy [examples/rulebook.yml](examples/rulebook.yml) to `.github/workflows/rulebook.yml`.
+4. **Write your policies** in `.rulebook/policies.md` (see [examples/policies.md](examples/policies.md)) and push them to your default branch.
 
-Every pull request then gets one comment with the problems found, updated on each push, plus inline annotations on the changed lines. The check passes unless you set `fail-on`.
+**Rules:** each push that changes `policies.md` runs the rules job. An agent writes a Semgrep rule and a test file for every policy and language, `semgrep --test` must pass, and the job opens (or updates) one pull request from the `rulebook/rules` branch. **Merging that pull request is what puts the rules into effect.** Review the rules like any code; your edits are kept, and a rule is only rewritten when its policy changes. Policies the agent can't write a rule for are listed in the PR, for you to write by hand. If you push your own commits to the `rulebook/rules` branch, the job will not overwrite them.
+
+**Reviews:** every pull request then gets one comment with the problems found, updated on each push, plus inline annotations on the changed lines. The check passes unless you set `fail-on`. Rules and policies are always read **from the base branch**, so a pull request cannot change the rules it is checked against.
 
 | Input | Default | What it does |
 |---|---|---|
@@ -28,7 +31,7 @@ Every pull request then gets one comment with the problems found, updated on eac
 | `comment` | `true` | `false`: report only in the job summary |
 | `max-calls` | `200` | Cap on model calls per run |
 
-Outputs: `problems`, `dismissed`, `status` (`clean`, `problems`, `skipped`, `failed`).
+Outputs: `problems`, `dismissed`, `status`, and for the rules job `rules-written` and `rules-failed`.
 
 Good to know:
 - It runs on Linux runners (`ubuntu-latest`).
@@ -51,6 +54,14 @@ pip install -e ".[dev]"
 rulebook policies .rulebook/policies.md
 ```
 
+**Write rules from your policies** into `.rulebook/rules/` (review them with `git diff`, then commit):
+
+```
+rulebook rules --dry-run      # what would change, no model calls
+rulebook rules                # write and test the rules
+rulebook rules --only no-eval # just one policy
+```
+
 **Review your branch** against the rules in `.rulebook/rules/`:
 
 ```
@@ -67,7 +78,7 @@ It looks at the lines your branch changed (including uncommitted edits to tracke
 | `--format json` | Machine-readable report |
 | `--fail-on error\|any` | Exit 1 when problems reach that level (default `none`) |
 
-Answers are cached in `.rulebook-cache/`, so running the review again on unchanged code costs nothing. Rules are written by hand for now; generating them from `policies.md` is milestone M3. See [examples/policies.md](examples/policies.md) for the policy format and [tests/fixtures](tests/fixtures) for example rules in Python, TypeScript, Java, Go and C#.
+Answers are cached in `.rulebook-cache/`, so running the review again on unchanged code costs nothing. See [examples/policies.md](examples/policies.md) for the policy format. You can also write rules by hand: any Semgrep rule in `.rulebook/rules/` with `metadata.policy` set to a policy's id is used, and a rule without `metadata.generated_by` is never touched by `rulebook rules`.
 
 **Model settings** (environment variables, all optional except the key):
 
