@@ -219,6 +219,9 @@ Ideas after v1:
 
 Rulebook Agents grew out of **Docker Locker**, a final project for ISM 6564 (Text Analytics) at the University of South Florida by Hesham Rashid and Zachary Zambrana. The triage agent, the rule synthesizer, the PR diff handling and the evaluation approach started from Zachary's code in that project; the policy-citation agent, model client, guardrails and red-team suite started from Hesham's. Source: `ISM-6564-Final-Project-Docker-Locker` at commit `c49d12c`.
 
+**Hesham Rashid**
+- Portfolio: https://www.heshamrashid.org/
+
 ## License
 
 [MIT](LICENSE)
