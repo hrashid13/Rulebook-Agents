@@ -134,12 +134,24 @@ def to_markdown(report: Report, policies: dict, *, title: str = "Rulebook Agents
                        f"{escape(policy.title if policy else a.policy_id)}: {escape_rich(item.reason)}")
         out += ["", "</details>"]
 
+    if report.unenforced:
+        names = ", ".join(escape(policies[pid].title if pid in policies else pid) for pid in report.unenforced)
+        n = len(report.unenforced)
+        out += ["", f"**Not enforced yet:** {_plural(n, 'policy', 'policies')} "
+                    f"{'has' if n == 1 else 'have'} no rules, so this review could not check "
+                    f"{'it' if n == 1 else 'them'}: {names}. Merge the rules pull request "
+                    "(or run the Rulebook workflow on the default branch) to enforce "
+                    f"{'it' if n == 1 else 'them'}."]
+
     if report.problems:
         out += ["", "**Setup problems**", ""] + [f"- {escape(p)}" for p in report.problems]
 
     usage = report.usage or {}
+    enforced = len(policies) - len(report.unenforced)
     footer = (f"Checked {_plural(report.changed_files, 'changed file')} against "
-              f"{_plural(len(policies), 'policy', 'policies')}")
+              f"{_plural(enforced, 'policy', 'policies')}")
+    if report.unenforced:
+        footer += f" ({len(report.unenforced)} more without rules)"
     if usage.get("calls"):
         footer += (f" with {escape(report.model)} · {_plural(usage['calls'], 'model call')}"
                    f" ({usage.get('cache_hits', 0)} from cache)")
