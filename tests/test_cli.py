@@ -79,3 +79,11 @@ def test_runs_as_a_module():
     out = subprocess.run([sys.executable, "-m", "rulebook", "--version"],
                          capture_output=True, text=True, check=True)
     assert __version__ in out.stdout
+
+
+def test_readme_workflow_matches_the_example():
+    """The README shows the whole workflow inline; it must not drift from examples/rulebook.yml."""
+    example = (ROOT / "examples" / "rulebook.yml").read_text()
+    body = example[example.index("name: Rulebook"):].rstrip()
+    indented = "\n".join(("   " + line) if line else "" for line in body.splitlines())
+    assert indented in (ROOT / "README.md").read_text()

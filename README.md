@@ -30,12 +30,96 @@ How to read it:
 
 ## Use it on your pull requests (GitHub Action)
 
-Setup takes about five minutes.
+Setup takes about five minutes. The Marketplace's "Use latest version" snippet is only the `uses:` line; the action also needs the triggers and permissions below, so copy the whole workflow.
 
-1. **Add your API key** as a repository secret named `ANTHROPIC_API_KEY` (Settings > Secrets and variables > Actions).
-2. **Let Actions open pull requests:** Settings > Actions > General > Workflow permissions > tick "Allow GitHub Actions to create and approve pull requests".
-3. **Add the workflow:** copy [examples/rulebook.yml](examples/rulebook.yml) to `.github/workflows/rulebook.yml`.
-4. **Write your policies** in `.rulebook/policies.md` (see [examples/policies.md](examples/policies.md)) and push them to your default branch.
+1. **Add your API key.** Create one in the [Anthropic Console](https://console.anthropic.com) and add it to your repository as a secret named `ANTHROPIC_API_KEY` (Settings > Secrets and variables > Actions > New repository secret).
+2. **Let Actions open pull requests:** Settings > Actions > General > Workflow permissions > tick "Allow GitHub Actions to create and approve pull requests", then Save. The rules arrive as a pull request.
+3. **Add the workflow** as `.github/workflows/rulebook.yml` (the same file as [examples/rulebook.yml](examples/rulebook.yml)). If your default branch isn't `main`, change `branches: [main]`.
+
+   ```yaml
+   name: Rulebook
+
+   on:
+     pull_request:                                  # review every pull request
+       types: [opened, synchronize, reopened, ready_for_review]
+     push:                                          # policies changed on main: write their rules
+       branches: [main]
+       paths: [.rulebook/policies.md, .rulebook/config.yml]
+     workflow_dispatch:                             # or run the rules job by hand (Actions tab)
+     issue_comment:                                 # `/rulebook file 1` on a PR: open an issue
+       types: [created]
+
+   permissions: {}                                  # each job asks only for what it needs
+
+   jobs:
+     review:
+       if: github.event_name == 'pull_request'
+       runs-on: ubuntu-latest
+       permissions:
+         contents: read          # read the code
+         pull-requests: write    # post and update the review comment
+       steps:
+         - uses: actions/checkout@v4
+           with:
+             fetch-depth: 0      # the review compares the PR with its base branch
+         - uses: hrashid13/Rulebook-Agents@v1   # v1 follows the latest 1.x release
+           with:
+             api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+             # fail-on: error    # make the check fail on error-severity problems
+
+     rules:
+       if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+       runs-on: ubuntu-latest
+       permissions:
+         contents: write         # push the rulebook/rules branch
+         pull-requests: write    # open the pull request with the new rules
+       steps:
+         - uses: actions/checkout@v4
+           with:
+             fetch-depth: 0
+         - uses: hrashid13/Rulebook-Agents@v1
+           with:
+             api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+     file:
+       # Anyone can comment, so this job checks out no PR code, uses no API key, and the
+       # Action checks the commenter has write access before filing anything.
+       if: >-
+         github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+         startsWith(github.event.comment.body, '/rulebook')
+       runs-on: ubuntu-latest
+       permissions:
+         contents: read          # read .rulebook/config.yml from the default branch
+         issues: write           # open the issues
+         pull-requests: write    # reply on the pull request
+       concurrency:
+         group: rulebook-file-${{ github.event.issue.number }}   # one command at a time per PR
+       steps:
+         - uses: actions/checkout@v4
+         - uses: hrashid13/Rulebook-Agents@v1
+   ```
+
+4. **Write your policies** in `.rulebook/policies.md`: one `##` heading per rule, in plain English. For example:
+
+   ```markdown
+   ## No hardcoded secrets
+   category: security
+   severity: error
+
+   API keys, passwords and tokens must never appear in source code. Load them from environment variables or a secret manager.
+   ```
+
+   More examples, and the optional fields, in [examples/policies.md](examples/policies.md).
+5. **Push both files to your default branch.**
+
+**What happens next:**
+1. That push starts the **rules** job (a minute or two). It opens a pull request named "Rulebook: rules for N policies" with a tested Semgrep rule per policy and language.
+2. **Review and merge that pull request.** Until you do, reviews have no rules to enforce, and the review comment says so ("Not enforced yet").
+3. From then on, **every pull request gets a review comment** with the problems found, each quoting the policy it breaks, with a suggested fix.
+4. To track a finding, anyone with write access comments `/rulebook file 1` on the pull request, and it becomes an issue.
+5. When you edit `policies.md`, a new rules pull request updates only the rules for the policies you changed.
+
+### How each part works
 
 **Rules:** each push that changes `policies.md` runs the rules job. An agent writes a Semgrep rule and a test file for every policy and language, `semgrep --test` must pass, and the job opens (or updates) one pull request from the `rulebook/rules` branch. **Merging that pull request is what puts the rules into effect.** Review the rules like any code; your edits are kept, and a rule is only rewritten when its policy changes. Policies the agent can't write a rule for are listed in the PR, for you to write by hand. If you push your own commits to the `rulebook/rules` branch, the job will not overwrite them.
 
