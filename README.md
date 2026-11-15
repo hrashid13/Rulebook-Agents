@@ -8,9 +8,35 @@ Write your team's coding rules in plain English. Rulebook Agents turns each one 
 
 Works with any language Semgrep supports, and any model with an Anthropic or OpenAI-compatible API.
 
-> **Status: early development.** The design is in [docs/DESIGN.md](docs/DESIGN.md). The GitHub Action is not usable yet.
+> **Status: early development.** Reviews work, locally and as a GitHub Action. Rules are written by hand until rule generation (M3) lands. The design is in [docs/DESIGN.md](docs/DESIGN.md).
 
-## What works today
+## Use it on your pull requests (GitHub Action)
+
+1. **Add your rules** on your default branch: `.rulebook/policies.md` (your policies in plain English; see [examples/policies.md](examples/policies.md)) and `.rulebook/rules/` (Semgrep rules, each with `metadata.policy` set to the policy's id; see [tests/fixtures](tests/fixtures) for examples in five languages). The Action always reads these **from the base branch**, so a pull request cannot change the rules it is checked against.
+2. **Add your API key** as a repository secret named `ANTHROPIC_API_KEY` (Settings > Secrets and variables > Actions).
+3. **Add the workflow:** copy [examples/rulebook.yml](examples/rulebook.yml) to `.github/workflows/rulebook.yml`.
+
+Every pull request then gets one comment with the problems found, updated on each push, plus inline annotations on the changed lines. The check passes unless you set `fail-on`.
+
+| Input | Default | What it does |
+|---|---|---|
+| `api-key` | | Model API key (pass a secret) |
+| `provider` | `anthropic` | Or `openai` for any OpenAI-compatible API |
+| `model` | `claude-haiku-5-5` | Model name (required for `openai`) |
+| `base-url` | | API URL for `openai`, e.g. `https://api.openai.com/v1` |
+| `fail-on` | `none` | `error` or `any`: when the check should fail |
+| `comment` | `true` | `false`: report only in the job summary |
+| `max-calls` | `200` | Cap on model calls per run |
+
+Outputs: `problems`, `dismissed`, `status` (`clean`, `problems`, `skipped`, `failed`).
+
+Good to know:
+- It runs on Linux runners (`ubuntu-latest`).
+- Pull requests from forks are skipped: GitHub gives them no secrets.
+- If the model or Semgrep fails, the check fails and the comment says nothing was reviewed. An outage never looks like a clean review.
+- Nothing from the pull request or the model is printed to the job log, and only the bot's own comment is ever edited.
+
+## Use it locally
 
 You need Python 3.11+, git, and [Semgrep](https://semgrep.dev) installed in its own environment:
 

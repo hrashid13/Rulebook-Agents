@@ -67,6 +67,8 @@ def run_semgrep(config: str | Path, targets: Sequence[str], *, cwd: str | Path,
 def read_snippet(repo: Path, path: str, start: int, end: int, fallback: str = "") -> str:
     """The matched code, read from the file (Semgrep without a login returns the text
     "requires login" instead of the code)."""
+    if not is_safe_target(repo, path):
+        return ""
     end = min(max(end, start), start + MAX_SNIPPET_LINES - 1)
     try:
         lines = (repo / path).read_text(encoding="utf-8").splitlines()
@@ -99,13 +101,27 @@ def policy_for(rule_id: str, metadata: dict[str, Any], policy_ids: Iterable[str]
     return None
 
 
+def is_safe_target(repo: Path, path: str) -> bool:
+    """A regular file inside the repo. A pull request can add a symlink (or a path with ..)
+    pointing at a file elsewhere on the machine; reading it would send that file to the
+    model and could post it in the PR comment. Such paths are never scanned or read."""
+    candidate = repo / path
+    if candidate.is_symlink() or not candidate.is_file():
+        return False
+    try:
+        candidate.resolve().relative_to(repo.resolve())   # also catches a symlinked folder
+    except ValueError:
+        return False
+    return True
+
+
 def scan(repo: str | Path, rules: str | Path, changed: dict[str, set[int]],
          policy_ids: Iterable[str]) -> tuple[list[Alert], list[str]]:
     """Alerts on changed lines only, each tied to a known policy. Returns (alerts, problems):
     problems are things a person should fix (a rule that fails to parse, a rule with no
     policy), reported rather than silently dropped."""
     repo = Path(repo)
-    targets = sorted(p for p in changed if (repo / p).is_file())
+    targets = sorted(p for p in changed if is_safe_target(repo, p))
     if not targets:
         return [], []
     data = run_semgrep(Path(rules).resolve(), targets, cwd=repo)

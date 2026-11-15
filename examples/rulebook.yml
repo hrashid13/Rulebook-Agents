@@ -1,0 +1,24 @@
+# Copy to .github/workflows/rulebook.yml in your repository.
+# Needs a repository secret ANTHROPIC_API_KEY (Settings > Secrets and variables > Actions),
+# and .rulebook/policies.md plus .rulebook/rules/ merged on your default branch.
+name: Rulebook
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read          # read the code
+  pull-requests: write    # post and update the review comment
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the review compares the PR with its base branch
+      - uses: hrashid13/Rulebook-Agents@main   # pin a release tag (e.g. @v1) once there is one
+        with:
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # fail-on: error   # make the check fail on error-severity problems

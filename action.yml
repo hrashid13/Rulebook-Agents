@@ -1,0 +1,99 @@
+name: Rulebook Agents
+description: Plain-English coding rules, turned into tested Semgrep rules and enforced on every pull request, with each finding quoting the rule it breaks.
+author: Hesham Rashid and Zachary Zambrana
+branding:
+  icon: book-open
+  color: purple
+
+inputs:
+  api-key:
+    description: API key for the model provider (store it as a repository secret).
+    required: false
+    default: ""
+  provider:
+    description: "anthropic (default) or openai (any OpenAI-compatible API: OpenAI, OpenRouter, a self-hosted model)."
+    required: false
+    default: anthropic
+  model:
+    description: Model name. Default for anthropic is claude-haiku-5-5; required for openai.
+    required: false
+    default: ""
+  base-url:
+    description: API base URL. Required for provider openai, e.g. https://api.openai.com/v1.
+    required: false
+    default: ""
+  fail-on:
+    description: "When the check fails: none (default, report only), error (a problem with severity error), any (any problem). Overrides config.yml."
+    required: false
+    default: ""
+  comment:
+    description: Post the report as a pull request comment (true) or only in the job summary (false).
+    required: false
+    default: "true"
+  max-calls:
+    description: Upper limit on model calls in one run.
+    required: false
+    default: "200"
+  github-token:
+    description: Token used to post the comment. The default job token is right for most repositories.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  problems:
+    description: Number of problems found.
+    value: ${{ steps.rulebook.outputs.problems }}
+  dismissed:
+    description: Number of alerts dismissed as noise.
+    value: ${{ steps.rulebook.outputs.dismissed }}
+  status:
+    description: "clean, problems, skipped or failed."
+    value: ${{ steps.rulebook.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check the runner
+      if: runner.os != 'Linux'
+      shell: bash
+      run: |
+        echo "::error::Rulebook Agents runs on Linux runners (for example runs-on: ubuntu-latest)."
+        exit 1
+
+    # pipx keeps both tools in their own environments, so nothing here changes the Python
+    # your other steps use (and Semgrep's pinned dependencies cannot clash with ours).
+    - name: Install Rulebook Agents and Semgrep
+      shell: bash
+      run: |
+        pipx install --force "$GITHUB_ACTION_PATH" > /dev/null
+        pipx install --force semgrep==1.183.0 > /dev/null
+        rulebook --version
+
+    # Saved answers make a re-run on unchanged lines free. The folder is outside the
+    # checkout on purpose: a pull request must not be able to plant answers in it.
+    - name: Restore saved answers
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/rulebook-cache
+        key: rulebook-${{ github.repository }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.run_id }}
+        restore-keys: |
+          rulebook-${{ github.repository }}-${{ github.event.pull_request.number || github.ref_name }}-
+          rulebook-${{ github.repository }}-
+
+    - name: Review
+      id: rulebook
+      shell: bash
+      # Inputs reach the program as environment variables, never pasted into this script,
+      # so no input value can be run as shell code.
+      env:
+        RULEBOOK_API_KEY: ${{ inputs.api-key }}
+        RULEBOOK_PROVIDER: ${{ inputs.provider }}
+        RULEBOOK_MODEL: ${{ inputs.model }}
+        RULEBOOK_BASE_URL: ${{ inputs.base-url }}
+        RULEBOOK_FAIL_ON: ${{ inputs.fail-on }}
+        RULEBOOK_COMMENT: ${{ inputs.comment }}
+        RULEBOOK_MAX_CALLS: ${{ inputs.max-calls }}
+        RULEBOOK_GITHUB_TOKEN: ${{ inputs.github-token }}
+        RULEBOOK_CACHE_DIR: ${{ runner.temp }}/rulebook-cache
+        RULEBOOK_LLM_MODE: record
+      run: rulebook action
