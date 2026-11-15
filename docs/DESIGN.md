@@ -1,6 +1,6 @@
 # Rulebook Agents: design for v1
 
-Status: M0 and M1 built (`rulebook policies`, `rulebook review` locally). Everything from M2 on is still design.
+Status: M0–M2 built (`rulebook policies`, `rulebook review`, and the review flow as a GitHub Action). M3 onward is still design.
 
 ## What it is
 
@@ -155,6 +155,20 @@ Trigger: a PR comment `/rulebook file 1` (or `file all`).
 | Someone files issues they shouldn't | `/rulebook file` checks the commenter's permission |
 | A bad rule slips in | Rules only arrive by merged PR, each with a passing `semgrep --test` |
 | Runaway cost | `max_findings`, a per-run call cap, and a cache of answers keyed by the prompt (unchanged lines on the next push cost nothing) |
+| A PR changes the rules it is checked against | Policies, rules and config are read from the base commit (`git show`), never from the PR |
+| PR or model text runs workflow commands (`::add-mask::`, `::stop-commands::`) | Nothing untrusted is printed to the job log; our own annotations encode every value |
+| A PR commits fake cached answers | The answer cache lives in the runner's temp folder, outside the checkout |
+| A PR adds a symlink to a file on the runner | Symlinks and paths outside the repo are never scanned or read |
+| Someone pastes our marker into their own comment | Only a comment with the marker **and** written by the bot is edited |
+
+## Packaging: a composite action
+
+The first plan was a Docker container action. M2 ships a composite action instead:
+- `pipx` installs Rulebook Agents and Semgrep in their own environments, so nothing changes the Python the user's other steps use, and Semgrep's pinned dependencies cannot clash with ours.
+- It runs directly on the runner, next to the user's checkout, so there are no container ownership problems with git.
+- Installing takes under a minute; a published image can still come in M5 if start-up time matters.
+
+Inputs reach the program only as environment variables, never pasted into the shell script, so no input value can run as shell code.
 
 ## What we reuse from Docker Locker, and what we drop
 
@@ -171,8 +185,7 @@ The MCP server can come back in v2 as `rulebook mcp`, so IDE agents (Claude Code
 ## Repo layout
 
 ```
-action.yml                 Docker container action -> ghcr.io/hrashid13/rulebook-agents:<version>
-Dockerfile
+action.yml                 composite action: pipx-installs this package and Semgrep, then `rulebook action`
 pyproject.toml             package "rulebook-agents", CLI "rulebook"
 src/rulebook/
   cli.py                   rulebook review | rules | test | file-issues

@@ -7,13 +7,16 @@ whose contents GitHub does not render.
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import PurePosixPath
+from typing import Any, Optional
 
 from .models import Report
 
 MARKER = "<!-- rulebook-agents:review -->"   # lets the Action find and update its own comment
+DATA_PREFIX = "<!-- rulebook-agents:data "     # the findings, for `/rulebook file N` (M4)
 
 _SPECIAL = re.compile(r"([\\`*\[\]<>#|~!{}])")
 _LONE_UNDERSCORE = re.compile(r"(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])")   # user_id stays as it is
@@ -85,8 +88,11 @@ def _plural(n: int, word: str, plural: str = "") -> str:
     return f"{n} {word if n == 1 else (plural or word + 's')}"
 
 
-def to_markdown(report: Report, policies: dict, *, title: str = "Rulebook Agents") -> str:
+def to_markdown(report: Report, policies: dict, *, title: str = "Rulebook Agents",
+                commit: str = "") -> str:
     out = [MARKER, f"## {title}", ""]
+    if commit:
+        out += [f"Reviewed commit {code_span(commit[:12])}.", ""]
     f, d = report.findings, report.dismissed
     if not f and not d and not report.problems:
         out.append(f"No policy problems in this change ({_plural(report.changed_files, 'changed file')} checked).")
@@ -143,6 +149,41 @@ def to_markdown(report: Report, policies: dict, *, title: str = "Rulebook Agents
             footer += f" · ${usage['cost_usd']:.4f}"
     out += ["", f"<sub>{footer}</sub>", ""]
     return "\n".join(out)
+
+
+def data_block(report: Report, policies: dict, commit: str = "") -> str:
+    """The findings as base64 JSON inside an HTML comment: invisible, and base64 can never
+    contain "-->". `/rulebook file N` reads it back from our own comment only."""
+    items = []
+    for n, f in enumerate(report.findings, 1):
+        policy = policies.get(f.alert.policy_id)
+        items.append({"n": n, "path": f.alert.path, "line": f.alert.start_line,
+                      "end_line": f.alert.end_line, "policy_id": f.alert.policy_id,
+                      "policy_title": policy.title if policy else f.alert.policy_id,
+                      "severity": f.alert.severity, "quote": f.quote, "explanation": f.explanation,
+                      "fix_code": f.fix_code, "fix_note": f.fix_note})
+    raw = json.dumps({"v": 1, "commit": commit, "findings": items}, separators=(",", ":"))
+    return f"{DATA_PREFIX}{base64.b64encode(raw.encode()).decode()} -->"
+
+
+def read_data_block(body: str) -> Optional[dict[str, Any]]:
+    m = re.search(re.escape(DATA_PREFIX) + r"([A-Za-z0-9+/=]+) -->", body or "")
+    if not m:
+        return None
+    try:
+        data = json.loads(base64.b64decode(m.group(1), validate=True))
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) and data.get("v") == 1 else None
+
+
+def failure_markdown(message: str, *, commit: str = "", title: str = "Rulebook Agents") -> str:
+    """Replaces the previous report when a review cannot finish, so an old report is never
+    mistaken for the result of the latest push."""
+    where = f" on commit {code_span(commit[:12])}" if commit else ""
+    return "\n".join([MARKER, f"## {title}", "",
+                      f"The review could not finish{where}: {escape(message)}", "",
+                      "Nothing was checked for this push. The job log has the details.", ""])
 
 
 def to_json(report: Report) -> str:

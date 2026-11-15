@@ -24,6 +24,7 @@ from .guardrails import ALL_ON, Guardrails, detect_injection, wrap_untrusted
 from .llm import LLMClient
 from .models import Alert
 from .policies import Policy
+from .semgrep import is_safe_target
 
 CONTEXT_LINES = 12
 
@@ -51,6 +52,8 @@ class TriageResult:
 
 
 def surrounding_code(repo: Path, alert: Alert, context: int = CONTEXT_LINES) -> str:
+    if not is_safe_target(repo, alert.path):
+        return f"[{alert.path} is not a regular file in the repository]"
     try:
         lines = (repo / alert.path).read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as exc:

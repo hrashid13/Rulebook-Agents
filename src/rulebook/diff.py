@@ -79,9 +79,49 @@ def default_base(repo: str | Path) -> str:
     raise DiffError("could not find a base branch; pass --base (for example --base origin/main)")
 
 
-def changed_lines(repo: str | Path, base: str) -> dict[str, set[int]]:
+def changed_lines(repo: str | Path, base: str, *, merge_base: bool = True) -> dict[str, set[int]]:
+    """merge_base=False diffs against `base` itself: right for a pull-request checkout, where
+    HEAD is GitHub's merge of the PR into the base commit."""
     repo = Path(repo)
-    merge_base = _git(repo, "merge-base", base, "HEAD").strip()
+    start = _git(repo, "merge-base", base, "HEAD").strip() if merge_base else base
     text = _git(repo, "diff", "--no-color", "--no-ext-diff", "--unified=0", "--find-renames",
-                "--src-prefix=a/", "--dst-prefix=b/", merge_base)
+                "--src-prefix=a/", "--dst-prefix=b/", start)
     return parse_unified_diff(text)
+
+
+def has_commit(repo: str | Path, sha: str) -> bool:
+    try:
+        _git(Path(repo), "cat-file", "-e", f"{sha}^{{commit}}")
+        return True
+    except DiffError:
+        return False
+
+
+def ensure_commit(repo: str | Path, sha: str) -> None:
+    """A shallow checkout (the default fetch-depth: 1) may not have the base commit."""
+    if not has_commit(repo, sha):
+        _git(Path(repo), "fetch", "--no-tags", "--depth=1", "origin", sha)
+
+
+def export_folder(repo: str | Path, rev: str, folder: str, dest: str | Path) -> bool:
+    """Copy `folder` as it is at commit `rev` into `dest`, without touching the working tree.
+    Returns False if the folder does not exist at that commit. Symlinks are not exported."""
+    repo, dest = Path(repo), Path(dest)
+    listing = _git(repo, "ls-tree", "-r", "-z", rev, "--", folder)
+    entries = [e for e in listing.split("\0") if e]
+    if not entries:
+        return False
+    for entry in entries:
+        meta, path = entry.split("\t", 1)
+        mode, kind = meta.split()[:2]
+        if kind != "blob" or mode == "120000":        # skip submodules and symlinks
+            continue
+        target = (dest / path).resolve()
+        target.relative_to(dest.resolve())          # a crafted path must not escape dest
+        target.parent.mkdir(parents=True, exist_ok=True)
+        proc = subprocess.run(["git", "show", f"{rev}:{path}"], cwd=repo, capture_output=True,
+                              stdin=subprocess.DEVNULL, check=False)
+        if proc.returncode != 0:
+            raise DiffError(f"git show {rev}:{path} failed: {proc.stderr.decode(errors='replace')[:200]}")
+        target.write_bytes(proc.stdout)
+    return True

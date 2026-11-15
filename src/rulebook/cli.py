@@ -2,6 +2,7 @@
 
     rulebook policies [PATH]   check policies.md and list what it defines
     rulebook review            review this branch's changes against the rules
+    rulebook action            run inside GitHub Actions (used by action.yml)
     rulebook rules             draft and test rules from policies.md (milestone M3)
     rulebook file-issues       open issues for findings (milestone M4)
 
@@ -88,6 +89,11 @@ def _review(args: argparse.Namespace) -> int:
     return 1 if should_fail(report, fail_on) else 0
 
 
+def _action() -> int:
+    from .action import main as action_main
+    return action_main()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rulebook",
@@ -109,6 +115,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--output", help="write the report to this file instead of printing it")
     r.add_argument("--fail-on", choices=FAIL_ON, help="exit 1 when problems reach this level (default: config, else none)")
     r.set_defaults(func=_review)
+
+    a = sub.add_parser("action", help="run inside GitHub Actions (used by action.yml)")
+    a.set_defaults(func=lambda args: _action())
 
     for name, milestone, text in (("rules", "M3", "draft and test Semgrep rules from policies.md"),
                                   ("file-issues", "M4", "open GitHub issues for findings")):
