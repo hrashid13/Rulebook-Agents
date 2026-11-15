@@ -35,7 +35,7 @@ def test_review_finds_new_problems_only(tmp_path, lang):
     real, noise = EXPECTED[lang]
     assert {(f.alert.path, f.alert.start_line, f.alert.policy_id) for f in report.findings} == real
     assert {(d.alert.path, d.alert.start_line, d.alert.policy_id) for d in report.dismissed} == noise
-    assert report.problems == []
+    assert report.problems == [] and report.unenforced == []
     assert all(f.quote_checked for f in report.findings)   # every quote is from the policy
 
 
@@ -71,6 +71,30 @@ def test_no_rules_yet_is_reported_not_an_error(tmp_path):
     repo = make_repo(tmp_path, "python")
     report = run_review(replace(inputs(repo), rules=repo / "missing"), scripted_llm(tmp_path))
     assert report.findings == [] and "No rules yet" in report.problems[0]
+
+
+@needs_semgrep
+def test_policy_without_rules_is_called_out(tmp_path):
+    """A policy whose rules are not merged yet can find nothing; the report must not read as
+    if it was checked."""
+    repo = make_repo(tmp_path, "python")
+    (repo / ".rulebook" / "rules" / "no-print-debugging.yml").unlink()
+    policies = {p.id: p for p in load_policies(repo / ".rulebook" / "policies.md")}
+    report = run_review(inputs(repo), scripted_llm(tmp_path))
+    assert report.unenforced == ["no-print-debugging"]           # SQL has its rule; no-eval is not Python
+    md = to_markdown(report, policies)
+    assert "**Not enforced yet:** 1 policy has no rules" in md and "No print debugging" in md
+    assert "against 3 policies (1 more without rules)" in md
+
+
+@needs_semgrep
+def test_fixes_are_told_about_neighbouring_findings(tmp_path):
+    repo = make_repo(tmp_path, "python")
+    llm = scripted_llm(tmp_path)
+    run_review(inputs(repo), llm)
+    prompts = [c["messages"][0]["content"] for c in llm._backend.calls if c["agent"] == "agent2"]
+    assert any("reported separately: 20." in p for p in prompts)     # users.py lines 19 and 20
+    assert any("reported separately: 19." in p for p in prompts)
 
 
 @needs_semgrep

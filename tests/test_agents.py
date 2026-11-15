@@ -156,6 +156,31 @@ def test_explain_sees_the_code_around_the_match(tmp_path):
     assert "reuse its existing names" in llm._backend.calls[0]["system"]
 
 
+def test_fix_leaves_other_flagged_lines_alone(tmp_path):
+    """Two findings on neighbouring lines must not each rewrite both lines."""
+    a = alert_at(tmp_path)
+    llm = scripted_llm(tmp_path)
+    explain(a, POLICY, "r", llm, other_lines=[(4, 4), (9, 11)])
+    prompt = llm._backend.calls[0]["messages"][0]["content"]
+    note = "Other lines of this file are reported separately: 4, 9-11."
+    assert note in prompt and "covers only lines 3-3" in prompt
+    assert prompt.index(note) > prompt.index("</untrusted_code>")              # our text, not the PR's
+    llm = scripted_llm(tmp_path / "again")
+    explain(a, POLICY, "r", llm)
+    assert "reported separately" not in llm._backend.calls[0]["messages"][0]["content"]
+
+
+def test_other_flagged_lines():
+    from rulebook.review import other_flagged_lines
+
+    def at(path, start, end=None):
+        return Alert(path=path, start_line=start, end_line=end or start, rule_id="r", policy_id="p",
+                     message="m", severity="error", snippet="")
+    me = at("a.py", 3)
+    alerts = [me, at("a.py", 4), at("a.py", 3), at("a.py", 2, 3), at("b.py", 5), at("a.py", 9, 11)]
+    assert other_flagged_lines(me, alerts) == [(4, 4), (9, 11)]   # same-line and other files left out
+
+
 def test_invented_quote_gets_one_retry_then_code_picks_one(tmp_path):
     a = alert_at(tmp_path)
     bad = {"explanation": "Bad SQL.", "quote": "All SQL is forbidden.", "fix": ""}

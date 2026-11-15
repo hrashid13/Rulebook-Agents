@@ -56,6 +56,7 @@ class Report:
     changed_files: int = 0
     alerts_total: int = 0
     alerts_skipped: int = 0                                # over max_findings
+    unenforced: list[str] = field(default_factory=list)    # policy ids with no rule yet
     retries: int = 0                                       # model answers that needed a second try
     model: str = ""
     usage: dict[str, Any] = field(default_factory=dict)

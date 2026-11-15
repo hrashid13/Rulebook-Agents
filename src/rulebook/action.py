@@ -212,6 +212,9 @@ class Action:
             self.say(command(_LEVEL.get(f.alert.severity, "warning"), f.explanation,
                              file=f.alert.path, line=f.alert.start_line, end_line=f.alert.end_line,
                              title=f"Rulebook: {policy.title if policy else f.alert.policy_id}"))
+        if report.unenforced:
+            self.say(command("warning", f"{len(report.unenforced)} policy(ies) have no rules yet and were not "
+                                        "checked: merge the rules pull request to enforce them."))
         fail_on = (self.env.get("RULEBOOK_FAIL_ON") or config.fail_on).lower()
         if fail_on not in FAIL_ON:
             self.say(command("warning", f"fail-on must be one of {', '.join(FAIL_ON)}; using none."))
