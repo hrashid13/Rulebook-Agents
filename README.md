@@ -8,7 +8,7 @@ Write your team's coding rules in plain English. Rulebook Agents turns each one 
 
 Works with any language Semgrep supports, and any model with an Anthropic or OpenAI-compatible API.
 
-> **Status: early development.** Rule generation and reviews work, locally and as a GitHub Action. The design is in [docs/DESIGN.md](docs/DESIGN.md).
+> **Status: early development.** Rule generation, reviews and filing issues work, locally and as a GitHub Action. The design is in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Use it on your pull requests (GitHub Action)
 
@@ -21,6 +21,8 @@ Works with any language Semgrep supports, and any model with an Anthropic or Ope
 
 **Reviews:** every pull request then gets one comment with the problems found, updated on each push, plus inline annotations on the changed lines. The check passes unless you set `fail-on`. Rules and policies are always read **from the base branch**, so a pull request cannot change the rules it is checked against.
 
+**Issues:** anyone with write access can comment `/rulebook file 1` on the pull request (a finding's number from the review comment), `/rulebook file 1 3`, or `/rulebook file all`. Each finding becomes an issue labelled `rulebook`, with the quote, the explanation, the fix and a link to the line; the bot replies with the issue numbers. Filing the same finding again points to the existing issue. Comments from anyone else get a polite refusal. To turn this off, put `issues: off` in `.rulebook/config.yml`. GitHub runs comment-triggered workflows from the default branch, so the workflow file must be merged there first.
+
 | Input | Default | What it does |
 |---|---|---|
 | `api-key` | | Model API key (pass a secret) |
@@ -31,7 +33,7 @@ Works with any language Semgrep supports, and any model with an Anthropic or Ope
 | `comment` | `true` | `false`: report only in the job summary |
 | `max-calls` | `200` | Cap on model calls per run |
 
-Outputs: `problems`, `dismissed`, `status`, and for the rules job `rules-written` and `rules-failed`.
+Outputs: `problems`, `dismissed`, `status`, for the rules job `rules-written` and `rules-failed`, and for the file job `issues-opened`.
 
 Good to know:
 - It runs on Linux runners (`ubuntu-latest`).
@@ -78,6 +80,13 @@ It looks at the lines your branch changed (including uncommitted edits to tracke
 | `--format json` | Machine-readable report |
 | `--fail-on error\|any` | Exit 1 when problems reach that level (default `none`) |
 
+**File issues** for a pull request's findings, as `/rulebook file` does, with your own token:
+
+```
+export GITHUB_TOKEN=...                 # a token that can write issues
+rulebook file-issues 1 3 --pr 7 --repository owner/name
+```
+
 Answers are cached in `.rulebook-cache/`, so running the review again on unchanged code costs nothing. See [examples/policies.md](examples/policies.md) for the policy format. You can also write rules by hand: any Semgrep rule in `.rulebook/rules/` with `metadata.policy` set to a policy's id is used, and a rule without `metadata.generated_by` is never touched by `rulebook rules`.
 
 **Model settings** (environment variables, all optional except the key):
@@ -95,11 +104,11 @@ Answers are cached in `.rulebook-cache/`, so running the review again on unchang
 
 | Milestone | What |
 |---|---|
-| M0 | Package, CLI, `policies.md` parser, CI |
-| M1 | `rulebook review` on a local branch, in several languages |
-| M2 | The review flow as a GitHub Action: PR comment and check |
-| M3 | `rulebook rules`: policies to tested Semgrep rules, opened as a PR |
-| M4 | `/rulebook file N`: findings to GitHub issues |
+| M0 | Package, CLI, `policies.md` parser, CI (done) |
+| M1 | `rulebook review` on a local branch, in several languages (done) |
+| M2 | The review flow as a GitHub Action: PR comment and check (done) |
+| M3 | `rulebook rules`: policies to tested Semgrep rules, opened as a PR (done) |
+| M4 | `/rulebook file N`: findings to GitHub issues (done) |
 | M5 | Published image, `v1` release, GitHub Marketplace listing |
 
 ## Credits

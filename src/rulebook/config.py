@@ -80,7 +80,8 @@ def load_config(path: str | Path) -> Config:
     fail_on = str(data.get("fail_on", "none")).lower()
     if fail_on not in FAIL_ON:
         raise ConfigError(f"config.yml: fail_on must be one of {', '.join(FAIL_ON)}")
-    issues = str(data.get("issues", "command")).lower()
+    issues = data.get("issues", "command")
+    issues = "off" if issues is False else str(issues).lower()     # YAML reads a bare `off` as false
     if issues not in ISSUES:
         raise ConfigError(f"config.yml: issues must be one of {', '.join(ISSUES)}")
     max_findings = data.get("max_findings", 25)

@@ -1,6 +1,6 @@
 # Rulebook Agents: design for v1
 
-Status: M0–M3 built: `rulebook policies`, `rulebook rules`, `rulebook review`, and the rules and review flows as a GitHub Action. M4 onward is still design.
+Status: M0–M4 built: `rulebook policies`, `rulebook rules`, `rulebook review`, `rulebook file-issues`, and the rules, review and `/rulebook file` flows as a GitHub Action. M5 (release) is next.
 
 ## What it is
 
@@ -151,6 +151,13 @@ Trigger: a PR comment `/rulebook file 1` (or `file all`).
 2. Read the findings from the hidden data block in our own PR comment (no model call).
 3. Open an issue per finding: title from the policy, body with the PR link, file and line, the quote and the explanation; label `rulebook`. Skip findings already filed for this PR.
 
+As built (M4):
+- `issue_comment` runs with the repository's token and anyone can trigger it, so the `file` job checks out only the default branch (for `config.yml`), never PR code, and calls no model (no API key). The workflow's `if:` lets only comments starting with `/rulebook` on a PR start the job.
+- Order: ignore bots, edits and plain issues; parse the command; `issues: off` replies and stops; the commenter needs `write` or `admin` (maintain counts as write); then findings are read from the data block of the comment that carries our marker **and** was written by the bot.
+- Each issue has a hidden key (sha256 of PR, policy, path, line). Only issues written by the bot count when looking for an earlier one, so a planted issue cannot suppress a finding. At most 25 issues per command.
+- Paths, explanations and fixes are escaped again for the issue body (they came from the PR and a model); the "view" link is built only from a checked commit sha and a URL-encoded path. The reply on the PR is built from numbers only, never from the comment text.
+- `rulebook file-issues 1 3 --pr 7` does the same locally with your own `GITHUB_TOKEN`.
+
 ## Security model
 
 | Risk | Control |
@@ -159,7 +166,8 @@ Trigger: a PR comment `/rulebook file 1` (or `file all`).
 | Prompt injection in the PR makes the model act | Models hold no GitHub token and call no tools. Only plain code posts comments, opens PRs and issues, from validated output |
 | Injection makes Agent 1 dismiss a real problem | Tagging, sanitising, quarantine on injection phrases; the "dismissed" list is shown in the comment so a human can see it. Residual risk, documented |
 | Model output pings people or posts links | All model text escaped before posting |
-| Someone files issues they shouldn't | `/rulebook file` checks the commenter's permission |
+| Someone files issues they shouldn't | `/rulebook file` checks the commenter's permission; the job reads no PR code and has no API key |
+| Someone feeds in fake findings or blocks real ones | Findings come only from the bot's own comment; only the bot's own issues count as "already filed" |
 | A bad rule slips in | Rules only arrive by merged PR, each with a passing `semgrep --test` |
 | Runaway cost | `max_findings`, a per-run call cap, and a cache of answers keyed by the prompt (unchanged lines on the next push cost nothing) |
 | A PR changes the rules it is checked against | Policies, rules and config are read from the base commit (`git show`), never from the PR |
@@ -195,7 +203,7 @@ The MCP server can come back in v2 as `rulebook mcp`, so IDE agents (Claude Code
 action.yml                 composite action: pipx-installs this package and Semgrep, then `rulebook action`
 pyproject.toml             package "rulebook-agents", CLI "rulebook"
 src/rulebook/
-  cli.py                   rulebook review | rules | test | file-issues
+  cli.py                   rulebook policies | review | rules | file-issues | action
   action.py                reads the GitHub event, picks the flow
   policies.py              policies.md parser, ids, hashes
   semgrep.py               run, --test, changed-line filter
@@ -205,6 +213,7 @@ src/rulebook/
   synthesize.py            rule synthesizer
   github.py                comments, checks, PRs, issues (plain code; the only writer)
   render.py                comment markdown, escaping
+  issues.py                /rulebook file: command, issue text, filing
   llm.py, guardrails.py
 tests/                     unit tests; fixture repos per language
 eval/                      golden sets per language, red-team cases

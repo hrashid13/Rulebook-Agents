@@ -35,7 +35,7 @@ inputs:
     required: false
     default: "200"
   github-token:
-    description: Token used to post the comment. The default job token is right for most repositories.
+    description: Token used to post comments, open the rules pull request and file issues. The default job token is right for most repositories.
     required: false
     default: ${{ github.token }}
 
@@ -47,7 +47,7 @@ outputs:
     description: Number of alerts dismissed as noise.
     value: ${{ steps.rulebook.outputs.dismissed }}
   status:
-    description: "Review: clean, problems, skipped or failed. Rules: pull-request, up-to-date, blocked or failed."
+    description: "Review: clean, problems, skipped or failed. Rules: pull-request, up-to-date, blocked or failed. File: filed, refused, usage, no-review, off or failed."
     value: ${{ steps.rulebook.outputs.status }}
   rules-written:
     description: "Rules flow: number of rules written and tested."
@@ -55,6 +55,9 @@ outputs:
   rules-failed:
     description: "Rules flow: number of policy-language pairs that need a hand-written rule."
     value: ${{ steps.rulebook.outputs.rules_failed }}
+  issues-opened:
+    description: "/rulebook file: number of issues opened."
+    value: ${{ steps.rulebook.outputs.issues_opened }}
 
 runs:
   using: composite
@@ -68,16 +71,21 @@ runs:
 
     # pipx keeps both tools in their own environments, so nothing here changes the Python
     # your other steps use (and Semgrep's pinned dependencies cannot clash with ours).
-    - name: Install Rulebook Agents and Semgrep
+    - name: Install Rulebook Agents
       shell: bash
       run: |
         pipx install --force "$GITHUB_ACTION_PATH" > /dev/null
-        pipx install --force semgrep==1.183.0 > /dev/null
         rulebook --version
+
+    - name: Install Semgrep
+      if: github.event_name != 'issue_comment'      # /rulebook file does not scan code
+      shell: bash
+      run: pipx install --force semgrep==1.183.0 > /dev/null
 
     # Saved answers make a re-run on unchanged lines free. The folder is outside the
     # checkout on purpose: a pull request must not be able to plant answers in it.
     - name: Restore saved answers
+      if: github.event_name != 'issue_comment'      # /rulebook file calls no model
       uses: actions/cache@v4
       with:
         path: ${{ runner.temp }}/rulebook-cache
@@ -86,7 +94,7 @@ runs:
           rulebook-${{ github.repository }}-${{ github.event.pull_request.number || github.ref_name }}-
           rulebook-${{ github.repository }}-
 
-    - name: Review
+    - name: Run Rulebook Agents
       id: rulebook
       shell: bash
       # Inputs reach the program as environment variables, never pasted into this script,

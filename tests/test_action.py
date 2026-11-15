@@ -256,8 +256,8 @@ def test_refuses_pull_request_target(tmp_path):
     assert code == 1 and "pull_request_target" in log
 
 
-def test_later_milestones_are_a_no_op(tmp_path):
-    for event in ("issue_comment", "schedule"):
+def test_other_events_are_a_no_op(tmp_path):
+    for event in ("schedule", "release"):
         out = io.StringIO()
         assert Action({"GITHUB_EVENT_NAME": event}, out=out).run() == 0
         assert out.getvalue().startswith("::notice::")

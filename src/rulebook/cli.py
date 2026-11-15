@@ -4,7 +4,7 @@
     rulebook review            review this branch's changes against the rules
     rulebook action            run inside GitHub Actions (used by action.yml)
     rulebook rules             write and test Semgrep rules from policies.md
-    rulebook file-issues       open issues for findings (milestone M4)
+    rulebook file-issues       open issues for a pull request's findings
 
 Exit codes for `review`: 0 done, 1 problems at or above --fail-on, 2 setup error
 (policies, config, git), 3 model error, 4 Semgrep missing or failing.
@@ -33,11 +33,32 @@ def _err(message: str) -> None:
     print(f"Error: {message}", file=sys.stderr)
 
 
-def _not_built(milestone: str):
-    def run(args: argparse.Namespace) -> int:
-        print(f"`rulebook {args.command}` is not built yet (milestone {milestone}).", file=sys.stderr)
+def _file_issues(args: argparse.Namespace) -> int:
+    from .github import DEFAULT_AUTHOR, GitHub, GitHubError
+    from .issues import CommandError, file_findings, findings_from, parse_command, reply_markdown
+    from .render import MARKER, read_data_block
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        _err("set GITHUB_TOKEN (or GH_TOKEN) to a token that can write issues")
         return 2
-    return run
+    try:
+        selection = parse_command("/rulebook file " + " ".join(args.findings))
+        gh = GitHub(token, args.repository)
+        ours = gh.find_own_comment(args.pr, MARKER, DEFAULT_AUTHOR)
+        data = read_data_block(ours.get("body", "")) if ours else None
+        if data is None:
+            _err(f"pull request #{args.pr} has no Rulebook review comment")
+            return 2
+        result = file_findings(gh, pr=args.pr, data=data, selection=selection,
+                               issue_authors={DEFAULT_AUTHOR, gh.viewer()})
+    except CommandError as exc:
+        _err(f"{exc}: give finding numbers (1 3) or all")
+        return 2
+    except GitHubError as exc:
+        _err(str(exc))
+        return 2
+    print(reply_markdown(result, len(findings_from(data))))
+    return 0
 
 
 def _policies(args: argparse.Namespace) -> int:
@@ -173,9 +194,14 @@ def build_parser() -> argparse.ArgumentParser:
     ru.add_argument("--dry-run", action="store_true", help="show what would change; call no model")
     ru.set_defaults(func=_rules)
 
-    for name, milestone, text in (("file-issues", "M4", "open GitHub issues for findings"),):
-        s = sub.add_parser(name, help=f"{text} (not built yet)")
-        s.set_defaults(func=_not_built(milestone))
+    fi = sub.add_parser("file-issues", help="open GitHub issues for findings in a pull request's review",
+                        description="The same as commenting `/rulebook file ...` on the pull request, "
+                                    "using your own token (GITHUB_TOKEN or GH_TOKEN).")
+    fi.add_argument("findings", nargs="+", metavar="N", help="finding numbers from the review, or `all`")
+    fi.add_argument("--pr", type=int, required=True, help="pull request number")
+    fi.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY", ""),
+                    help="owner/name (default: $GITHUB_REPOSITORY)")
+    fi.set_defaults(func=_file_issues)
     return parser
 
 

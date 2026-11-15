@@ -5,6 +5,8 @@
 #   * .rulebook/policies.md on your default branch
 #   * for the rules job: Settings > Actions > General > Workflow permissions >
 #     "Allow GitHub Actions to create and approve pull requests"
+#   * the file job (/rulebook file N) needs nothing extra. Workflows started by a comment
+#     always run the copy of this file on the default branch, so merge it there first.
 name: Rulebook
 
 on:
@@ -14,6 +16,8 @@ on:
     branches: [main]
     paths: [.rulebook/policies.md, .rulebook/config.yml]
   workflow_dispatch:                             # or run the rules job by hand (Actions tab)
+  issue_comment:                                 # `/rulebook file 1` on a PR: open an issue
+    types: [created]
 
 permissions: {}                                  # each job asks only for what it needs
 
@@ -34,7 +38,7 @@ jobs:
           # fail-on: error    # make the check fail on error-severity problems
 
   rules:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write         # push the rulebook/rules branch
@@ -46,3 +50,20 @@ jobs:
       - uses: hrashid13/Rulebook-Agents@main
         with:
           api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  file:
+    # Anyone can comment, so this job checks out no PR code, uses no API key, and the
+    # Action checks the commenter has write access before filing anything.
+    if: >-
+      github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/rulebook')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read          # read .rulebook/config.yml from the default branch
+      issues: write           # open the issues
+      pull-requests: write    # reply on the pull request
+    concurrency:
+      group: rulebook-file-${{ github.event.issue.number }}   # one command at a time per PR
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hrashid13/Rulebook-Agents@main

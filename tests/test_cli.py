@@ -33,12 +33,6 @@ def test_policies_reports_errors(tmp_path, capsys):
     assert "line 2" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("command, milestone", [("file-issues", "M4")])
-def test_unbuilt_commands_say_so(command, milestone, capsys):
-    assert main([command]) == 2
-    assert milestone in capsys.readouterr().err
-
-
 @pytest.fixture
 def scripted_from_env(monkeypatch, tmp_path):
     """`rulebook review` builds its model client from the environment; give it the scripted model."""

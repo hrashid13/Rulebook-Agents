@@ -103,6 +103,14 @@ def test_config_defaults_and_paths(tmp_path):
     assert c.wants("src/a.py") and not c.wants("lib/a.py") and not c.wants("src/x_generated.py")
 
 
+@pytest.mark.parametrize("text", ["issues: off", "issues: 'off'", "issues: OFF"])
+def test_config_issues_off(tmp_path, text):
+    """YAML reads a bare `off` as false; it must still mean off."""
+    f = tmp_path / "config.yml"
+    f.write_text(text + "\n")
+    assert load_config(f).issues == "off"
+
+
 @pytest.mark.parametrize("text, message", [
     ("fail_on: sometimes", "fail_on"), ("max_findings: 0", "max_findings"),
     ("languages: [cobol]", "unknown language"), ("paths: {only: [a]}", "include and exclude"),

@@ -47,7 +47,8 @@ class GitHub:
             hint = ""
             if resp.status_code == 403 and "not accessible" in message.lower():
                 hint = (" (the workflow's token lacks a permission: add `pull-requests: write` "
-                        "under `permissions:`, or this is a pull request from a fork)")
+                        "(and `issues: write` for /rulebook file) under `permissions:`, or this is a "
+                        "pull request from a fork)")
             elif resp.status_code == 403 and "not permitted to create" in message.lower():
                 hint = (" (turn on Settings > Actions > General > Workflow permissions > \"Allow GitHub "
                         "Actions to create and approve pull requests\")")
@@ -55,10 +56,10 @@ class GitHub:
                               resp.status_code)
         return resp
 
-    def _paged(self, url: str) -> list[dict]:
+    def _paged(self, url: str, **query: Any) -> list[dict]:
         items: list[dict] = []
         next_url: Optional[str] = url
-        params: Optional[dict] = {"per_page": 100}
+        params: Optional[dict] = {"per_page": 100, **query}
         for _ in range(50):                       # 5,000 items is plenty for one PR's comments
             if not next_url:
                 break
@@ -91,6 +92,46 @@ class GitHub:
 
     def comment(self, number: int, body: str) -> dict:
         return self._call("POST", f"/repos/{self.repository}/issues/{number}/comments", json={"body": body}).json()
+
+    # ---- people and issues -------------------------------------------------
+
+    def permission(self, user: str) -> str:
+        """The user's permission on this repository: admin, write, read or none.
+        (GitHub reports maintain as write and triage as read here.)"""
+        if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})", user or ""):
+            return "none"
+        try:
+            data = self._call("GET", f"/repos/{self.repository}/collaborators/{user}/permission").json()
+        except GitHubError as exc:
+            if exc.status == 404:
+                return "none"
+            raise
+        return str(data.get("permission") or "none")
+
+    def viewer(self) -> str:
+        """The login the token belongs to (a personal token; the Actions token has none)."""
+        return str(self._call("GET", "/user").json().get("login") or "")
+
+    def issues(self, *, label: str, state: str = "all") -> list[dict]:
+        return self._paged(f"/repos/{self.repository}/issues", labels=label, state=state)
+
+    def ensure_label(self, name: str, color: str, description: str) -> None:
+        try:
+            self._call("GET", f"/repos/{self.repository}/labels/{name}")
+            return
+        except GitHubError as exc:
+            if exc.status != 404:
+                raise
+        try:
+            self._call("POST", f"/repos/{self.repository}/labels",
+                       json={"name": name, "color": color, "description": description})
+        except GitHubError as exc:
+            if exc.status != 422:             # 422: created meanwhile by another run
+                raise
+
+    def create_issue(self, title: str, body: str, labels: list[str]) -> dict:
+        return self._call("POST", f"/repos/{self.repository}/issues",
+                          json={"title": title, "body": body[:MAX_COMMENT], "labels": labels}).json()
 
     # ---- pull requests -----------------------------------------------------
 
