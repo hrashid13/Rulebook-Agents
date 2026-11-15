@@ -1,0 +1,8 @@
+rules:
+  - id: parameterized-sql-only-typescript
+    languages: [typescript]
+    severity: ERROR
+    message: SQL built from strings
+    pattern-either:
+      - pattern: $DB.$M("..." + $X + ..., ...)
+      - pattern: $DB.$M(`...${$X}...`, ...)

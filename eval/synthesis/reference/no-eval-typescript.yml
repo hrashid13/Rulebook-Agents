@@ -1,0 +1,9 @@
+rules:
+  - id: no-eval-typescript
+    languages: [typescript]
+    severity: ERROR
+    message: eval
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: window.eval(...)
+      - pattern: new Function(...)

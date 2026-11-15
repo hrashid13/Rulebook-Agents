@@ -1,0 +1,23 @@
+{
+  "key": "216b3cad6b97dcf9a1559ff850abf2cea81ae0afd1e123e8c7088f500c70a43b",
+  "request": {
+    "model": "claude-haiku-5-5",
+    "system": "You write Semgrep rules that enforce a team's written coding policy, and a test file that proves each rule works.\n\nRules:\n- Use structural patterns: pattern, pattern-either, patterns with pattern-not or pattern-inside, and metavariables such as $X, $FUNC, $ARGS. Use pattern-regex only when the policy is about text, not code structure.\n- Cast a wide net over the construct the policy forbids. A reviewer looks at every match in context and dismisses the harmless ones, so a missed violation is worse than an extra match.\n- Leave out only compliant code that looks different in the code itself, such as a query with placeholders and separate parameters, or a value read from the environment. Do not try to judge intent: do not filter on variable or argument names (a thread need not be called `thread`), and do not use taint mode with guessed input sources. Exceptions that depend on context, such as constants, test code or what a hash is used for, are the reviewer's job.\n- Cover the common forms: the call as a statement and inside an assignment or return, on any receiver or expression, and each way the language builds strings (concatenation, formatting, interpolation) where that matters.\n- Keep the rule short: a few patterns, not dozens.\n- The message is one sentence telling the developer what is wrong.\n\nTest file:\n- A complete, valid source file in the target language that parses on its own.\n- On the line directly above each line that must match, put a comment with `ruleid: <rule id>`. Include three to five violations in different forms.\n- On the line directly above each line that must NOT match, put a comment with `ok: <rule id>`. Include two to four compliant cases that look similar to the violations.\n- Keep it under 50 lines: no long setup, no explanations.\n\nReply with exactly two fenced code blocks and nothing else: first ```yaml with the rule file (a `rules:` list with exactly one rule), then a block with the test file.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Policy \"No eval\" (severity error, category security):\nNever call JavaScript's eval() or new Function() on strings. Other APIs that happen to be named eval, such as Redis scripting, are not covered.\n\nWrite one Semgrep rule for TypeScript code with rule id `no-eval-typescript`, and a TypeScript test file (it will be saved as `no-eval-typescript.ts`). In the test file, mark lines with `// ruleid: no-eval-typescript` and `// ok: no-eval-typescript` comments."
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 8192
+  },
+  "response": {
+    "text": "```yaml\nrules:\n  - id: no-eval-typescript\n    languages: [typescript]\n    severity: ERROR\n    message: Do not call eval() or new Function() on strings; use a parser, a lookup table, or another safe alternative.\n    metadata:\n      category: security\n    pattern-either:\n      - pattern: eval(...)\n      - pattern: window.eval(...)\n      - pattern: globalThis.eval(...)\n      - pattern: Function(...)\n      - pattern: new Function(...)\n```\n\n```ts\ndeclare const window: any;\ndeclare const redis: any;\ndeclare const userInput: string;\ndeclare function safeEval(s: string): unknown;\n\nfunction run(code: string): unknown {\n  // ruleid: no-eval-typescript\n  eval(userInput);\n  // ruleid: no-eval-typescript\n  const result = eval(code);\n  // ruleid: no-eval-typescript\n  return eval(code);\n}\n\nfunction make(body: string) {\n  // ruleid: no-eval-typescript\n  return new Function(\"x\", body);\n}\n\nfunction viaWindow(code: string) {\n  // ruleid: no-eval-typescript\n  window.eval(code);\n}\n\nfunction compliant(code: string) {\n  // ok: no-eval-typescript\n  redis.eval(\"return 1\", 0);\n  // ok: no-eval-typescript\n  const evaluated = safeEval(code);\n  // ok: no-eval-typescript\n  const double = (x: number) => x * 2;\n  return [evaluated, double];\n}\n```",
+    "stop_reason": "end_turn",
+    "model": "claude-haiku-5-5",
+    "input_tokens": 800,
+    "output_tokens": 2982,
+    "latency_s": 12.788
+  }
+}

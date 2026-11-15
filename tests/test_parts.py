@@ -226,7 +226,7 @@ def test_escape_rich_keeps_code_spans_only():
 
 def test_escape_blocks_mentions_links_and_html():
     out = escape("@octocat see https://evil.example and [click](http://x) <img src=x> www.evil.com **bold**")
-    assert "@​octocat" in out and "https:​//" in out and "www​." in out
+    assert "@\u200boctocat" in out and "https:\u200b//" in out and "www\u200b." in out
     assert "\\[click\\]" in out and "\\<img" in out and "\\*\\*bold" in out
 
 
