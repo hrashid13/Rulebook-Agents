@@ -7,6 +7,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 
 import httpx
 import pytest
@@ -196,7 +197,10 @@ def test_symlinks_in_the_pr_are_never_read(tmp_path):
     secret.write_text('cur.execute("SELECT " + TOP_SECRET_TOKEN)\n')
 
     def add_link(repo):
-        os.symlink(secret, repo / "app" / "leak.py")
+        try:
+            os.symlink(secret, repo / "app" / "leak.py")
+        except OSError as exc:      # Windows without Developer Mode cannot create symlinks
+            pytest.skip(f"cannot create a symlink here: {exc}")
     repo, base, head = make_pr(tmp_path, change=add_link)
     fake = FakeGitHub()
     llm = scripted_llm(tmp_path)
@@ -269,7 +273,12 @@ def test_a_shallow_checkout_fetches_the_base(tmp_path):
     shallow = tmp_path / "shallow"
     git(tmp_path, "init", "-q", str(shallow))
     git(shallow, "remote", "add", "origin", origin.as_uri())
-    git(shallow, "fetch", "-q", "--depth=1", "origin", "refs/pull/7/merge")
+    try:
+        git(shallow, "fetch", "-q", "--depth=1", "origin", "refs/pull/7/merge")
+    except subprocess.CalledProcessError as exc:
+        if os.name != "nt":
+            raise
+        pytest.skip(f"a shallow fetch over file:// failed on Windows: {exc.stderr.strip()}")
     git(shallow, "checkout", "-q", "FETCH_HEAD")
     git(shallow, "config", "protocol.file.allow", "always")
     code, _, outputs = run(env_for(tmp_path, shallow, base, head), FakeGitHub(), scripted_llm(tmp_path), tmp_path)

@@ -254,3 +254,18 @@ def test_fix_shown_as_code_only_when_it_is_code():
 def test_markdown_clean_run():
     md = to_markdown(Report(base="main", changed_files=1), {})
     assert "No policy problems in this change (1 changed file checked)." in md
+
+
+def test_has_commit(tmp_path):
+    """No `^{commit}` syntax: Git for Windows expands the braces and every commit looks missing."""
+    from conftest import git
+    from rulebook.diff import has_commit
+    git(tmp_path, "init", "-q")
+    (tmp_path / "a.txt").write_text("a\n")
+    git(tmp_path, "add", "a.txt")
+    git(tmp_path, "commit", "-q", "-m", "a")
+    head = git(tmp_path, "rev-parse", "HEAD").strip()
+    tree = git(tmp_path, "rev-parse", "HEAD:").strip()
+    assert has_commit(tmp_path, head)
+    assert not has_commit(tmp_path, tree)                 # an object, but not a commit
+    assert not has_commit(tmp_path, "0" * 40)
