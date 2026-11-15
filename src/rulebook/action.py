@@ -2,7 +2,7 @@
 
     pull_request               review the PR
     push / workflow_dispatch   rules flow: policies.md -> tested Semgrep rules, opened as a PR
-    issue_comment              `/rulebook file N` (M4, not built yet)
+    issue_comment              `/rulebook file N`: findings from the review -> issues
 
 Security rules this file keeps (see docs/DESIGN.md):
   * Policies, rules and config come from the BASE commit, never from the PR. A PR cannot
@@ -13,6 +13,9 @@ Security rules this file keeps (see docs/DESIGN.md):
     a PR cannot commit fake "cached" answers.
   * Only our own comment is edited (github.py), and only after rendering has escaped it.
   * Pull requests from forks get no secrets on GitHub, so they are skipped with a note.
+  * `/rulebook file` runs on issue_comment, which anyone can trigger and which has the
+    repository's token. So it reads no PR code, calls no model, checks the commenter's
+    permission first, and takes findings only from our own review comment.
 """
 from __future__ import annotations
 
@@ -29,7 +32,8 @@ from .github import DEFAULT_AUTHOR, GitHub, GitHubError
 from .llm import LLMClient, LLMError
 from .policies import PolicyError, load_policies
 from .github import MAX_COMMENT
-from .render import MARKER, data_block, escape, failure_markdown, to_markdown
+from .issues import USAGE, CommandError, file_findings, findings_from, parse_command, reply_markdown
+from .render import MARKER, data_block, escape, failure_markdown, read_data_block, to_markdown
 from .ruleset import apply, detect_languages, make_plan, summary_markdown
 from .synthesize import synthesize
 from .review import ReviewInputs, run_review, should_fail
@@ -128,8 +132,7 @@ class Action:
         if event_name in ("push", "workflow_dispatch"):
             return self.rules_flow()
         if event_name == "issue_comment":
-            self.say(command("notice", "`/rulebook file` is not built yet (milestone M4). Nothing to do."))
-            return 0
+            return self.file_command()
         self.say(command("notice", f"Rulebook Agents has nothing to do for {event_name or 'this'} events."))
         return 0
 
@@ -203,7 +206,8 @@ class Action:
             return self._fail(number, head_sha, str(exc))
 
         by_id = {p.id: p for p in policies}
-        body = to_markdown(report, by_id, commit=head_sha) + "\n" + data_block(report, by_id, head_sha) + "\n"
+        body = (to_markdown(report, by_id, commit=head_sha, file_hint=config.issues == "command") + "\n"
+                + data_block(report, by_id, head_sha) + "\n")
         self.summary(to_markdown(report, by_id, commit=head_sha))
         self._post(number, body)
 
@@ -226,6 +230,76 @@ class Action:
                     status="problems" if report.findings else "clean")
         return 1 if failed else 0
 
+
+    # ------------------------------------------------------------------ /rulebook file
+
+    def file_command(self) -> int:
+        """`/rulebook file N` on a pull request -> one issue per finding.
+
+        The checkout is the default branch (issue_comment events always are); only its
+        .rulebook/config.yml is read. Nothing from the comment is printed or echoed back:
+        the reply is built from numbers."""
+        event = self._event()
+        issue, comment = event.get("issue") or {}, event.get("comment") or {}
+        if event.get("action") != "created" or "pull_request" not in issue:
+            self.say(command("notice", "Not a new comment on a pull request. Nothing to do."))
+            return 0
+        if (comment.get("user") or {}).get("type") == "Bot":
+            self.say(command("notice", "Comment written by a bot. Nothing to do."))
+            return 0
+        number = int(issue.get("number") or 0)
+        try:
+            selection = parse_command(str(comment.get("body") or ""))
+            bad_command = False
+        except CommandError:
+            selection, bad_command = None, True
+        if selection is None and not bad_command:
+            self.say(command("notice", "The comment is not a /rulebook command. Nothing to do."))
+            return 0
+        gh = self._gh()
+        if gh is None or not number:
+            self.say(command("error", "/rulebook file needs github-token and a pull request number."))
+            return 1
+        try:
+            config = load_config(self.workspace / ".rulebook" / "config.yml")
+        except ConfigError as exc:
+            self.say(command("error", f"Rulebook Agents: .rulebook/config.yml has a problem: {exc}"))
+            return 1
+        author = self.env.get("RULEBOOK_COMMENT_AUTHOR") or DEFAULT_AUTHOR
+        try:
+            if config.issues == "off":
+                gh.comment(number, "Filing issues is turned off for this repository (`issues: off` in "
+                                   "`.rulebook/config.yml`).")
+                self.output(issues_opened=0, status="off")
+                return 0
+            user = str((comment.get("user") or {}).get("login") or "")
+            if gh.permission(user) not in ("admin", "write"):
+                gh.comment(number, "Only people with write access to this repository can file issues "
+                                   "with `/rulebook file`.")
+                self.say(command("notice", "/rulebook file refused: the commenter does not have write access."))
+                self.output(issues_opened=0, status="refused")
+                return 0
+            if bad_command:
+                gh.comment(number, USAGE)
+                self.output(issues_opened=0, status="usage")
+                return 0
+            ours = gh.find_own_comment(number, MARKER, author)
+            data = read_data_block(ours.get("body", "")) if ours else None
+            if data is None:
+                gh.comment(number, "There is no Rulebook review on this pull request yet, so there is "
+                                   "nothing to file. Push a commit to run the review.")
+                self.output(issues_opened=0, status="no-review")
+                return 0
+            result = file_findings(gh, pr=number, data=data, selection=selection, issue_authors={author},
+                                   server=self.env.get("GITHUB_SERVER_URL") or "https://github.com")
+            gh.comment(number, reply_markdown(result, len(findings_from(data))))
+        except GitHubError as exc:
+            self.say(command("error", f"Rulebook Agents: {exc}"))
+            self.output(issues_opened=0, status="failed")
+            return 1
+        self.say(f"Rulebook Agents: {len(result.opened)} issue(s) opened, {len(result.existing)} already filed.")
+        self.output(issues_opened=len(result.opened), status="filed")
+        return 0
 
     # ------------------------------------------------------------------ rules flow
 

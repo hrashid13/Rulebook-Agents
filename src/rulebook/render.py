@@ -16,7 +16,7 @@ from typing import Any, Optional
 from .models import Report
 
 MARKER = "<!-- rulebook-agents:review -->"   # lets the Action find and update its own comment
-DATA_PREFIX = "<!-- rulebook-agents:data "     # the findings, for `/rulebook file N` (M4)
+DATA_PREFIX = "<!-- rulebook-agents:data "     # the findings, for `/rulebook file N`
 
 _SPECIAL = re.compile(r"([\\`*\[\]<>#|~!{}])")
 _LONE_UNDERSCORE = re.compile(r"(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])")   # user_id stays as it is
@@ -89,7 +89,7 @@ def _plural(n: int, word: str, plural: str = "") -> str:
 
 
 def to_markdown(report: Report, policies: dict, *, title: str = "Rulebook Agents",
-                commit: str = "") -> str:
+                commit: str = "", file_hint: bool = False) -> str:
     out = [MARKER, f"## {title}", ""]
     if commit:
         out += [f"Reviewed commit {code_span(commit[:12])}.", ""]
@@ -133,6 +133,10 @@ def to_markdown(report: Report, policies: dict, *, title: str = "Rulebook Agents
             out.append(f"- {code_span(a.path)} line {a.start_line} · "
                        f"{escape(policy.title if policy else a.policy_id)}: {escape_rich(item.reason)}")
         out += ["", "</details>"]
+
+    if file_hint and f:
+        out += ["", "To track a problem as an issue, someone with write access can comment "
+                    "`/rulebook file 1` (a finding's number) or `/rulebook file all`."]
 
     if report.unenforced:
         names = ", ".join(escape(policies[pid].title if pid in policies else pid) for pid in report.unenforced)
