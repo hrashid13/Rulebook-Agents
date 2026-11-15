@@ -1,0 +1,12 @@
+rules:
+  - id: parameterized-sql-only-go
+    languages: [go]
+    severity: ERROR
+    message: SQL is built with fmt.Sprintf or string concatenation.
+    metadata:
+      policy: parameterized-sql-only
+    pattern-either:
+      - pattern: $DB.Query(fmt.Sprintf(...), ...)
+      - pattern: $DB.Query("..." + $X, ...)
+      - pattern: $DB.Exec(fmt.Sprintf(...), ...)
+      - pattern: $DB.Exec("..." + $X, ...)

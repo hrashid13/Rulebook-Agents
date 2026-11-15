@@ -1,0 +1,8 @@
+rules:
+  - id: no-print-debugging-python
+    languages: [python]
+    severity: INFO
+    message: print() used instead of logging.
+    metadata:
+      policy: no-print-debugging
+    pattern: print(...)

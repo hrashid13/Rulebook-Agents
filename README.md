@@ -12,12 +12,47 @@ Works with any language Semgrep supports, and any model with an Anthropic or Ope
 
 ## What works today
 
+You need Python 3.11+, git, and [Semgrep](https://semgrep.dev) installed in its own environment:
+
 ```
+uv tool install semgrep          # or: pipx install semgrep
 pip install -e ".[dev]"
-rulebook policies examples/policies.md
 ```
 
-`rulebook policies` checks a `policies.md` file and lists the policies it defines, with clear errors (and line numbers) for anything it can't read. See [examples/policies.md](examples/policies.md) for the format.
+**Check your policies file** (clear errors with line numbers for anything it can't read):
+
+```
+rulebook policies .rulebook/policies.md
+```
+
+**Review your branch** against the rules in `.rulebook/rules/`:
+
+```
+export ANTHROPIC_API_KEY=...            # PowerShell: $env:ANTHROPIC_API_KEY="..."
+rulebook review --base main
+```
+
+It looks at the lines your branch changed (including uncommitted edits to tracked files), runs your Semgrep rules on them, has one agent separate real problems from noise and another explain each real problem with a word-for-word quote of the policy, and prints a Markdown report. Options:
+
+| Option | What it does |
+|---|---|
+| `--base REF` | Branch to compare with (default: origin's default branch, then `main`/`master`) |
+| `--output FILE` | Write the report to a file |
+| `--format json` | Machine-readable report |
+| `--fail-on error\|any` | Exit 1 when problems reach that level (default `none`) |
+
+Answers are cached in `.rulebook-cache/`, so running the review again on unchanged code costs nothing. Rules are written by hand for now; generating them from `policies.md` is milestone M3. See [examples/policies.md](examples/policies.md) for the policy format and [tests/fixtures](tests/fixtures) for example rules in Python, TypeScript, Java, Go and C#.
+
+**Model settings** (environment variables, all optional except the key):
+
+| Variable | Default |
+|---|---|
+| `ANTHROPIC_API_KEY` or `RULEBOOK_API_KEY` | (required) |
+| `RULEBOOK_PROVIDER` | `anthropic`; or `openai` for any OpenAI-compatible API (OpenAI, OpenRouter, Ollama) |
+| `RULEBOOK_MODEL` | `claude-haiku-5-5` for Anthropic |
+| `RULEBOOK_BASE_URL` | needed for `openai`, e.g. `http://localhost:11434/v1` |
+| `RULEBOOK_MAX_CALLS` | `200` model calls per run |
+| `RULEBOOK_PRICE_IN_PER_MTOK` / `_OUT_` | `0` (set them to see cost in the report) |
 
 ## Roadmap
 

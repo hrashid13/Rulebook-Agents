@@ -37,3 +37,4 @@ packages = ["src/rulebook"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["fixtures"]   # sample projects scanned by the tests, not tests themselves

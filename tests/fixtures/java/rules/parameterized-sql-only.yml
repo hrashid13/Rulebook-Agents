@@ -1,0 +1,12 @@
+rules:
+  - id: parameterized-sql-only-java
+    languages: [java]
+    severity: ERROR
+    message: SQL is built by concatenating strings.
+    metadata:
+      policy: parameterized-sql-only
+    pattern-either:
+      - pattern: $S.executeQuery("..." + $X)
+      - pattern: $S.executeQuery("..." + $X + "...")
+      - pattern: $S.execute("..." + $X)
+      - pattern: $S.execute("..." + $X + "...")

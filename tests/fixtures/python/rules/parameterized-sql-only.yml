@@ -1,0 +1,13 @@
+rules:
+  - id: parameterized-sql-only-python
+    languages: [python]
+    severity: ERROR
+    message: SQL is built by concatenating or formatting strings.
+    metadata:
+      policy: parameterized-sql-only
+    pattern-either:
+      - pattern: $CUR.execute("..." + $X, ...)
+      - pattern: $CUR.execute("..." + $X + "...", ...)
+      - pattern: $CUR.execute(f"...", ...)
+      - pattern: $CUR.execute("..." % $X, ...)
+      - pattern: $CUR.execute("...".format(...), ...)
