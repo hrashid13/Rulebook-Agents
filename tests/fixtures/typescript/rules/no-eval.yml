@@ -1,0 +1,10 @@
+rules:
+  - id: no-eval-typescript
+    languages: [typescript]
+    severity: ERROR
+    message: eval() or new Function() runs a string as code.
+    metadata:
+      policy: no-eval
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)

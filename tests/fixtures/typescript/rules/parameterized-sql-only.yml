@@ -1,0 +1,10 @@
+rules:
+  - id: parameterized-sql-only-typescript
+    languages: [typescript]
+    severity: ERROR
+    message: SQL is built by concatenating strings or a template literal.
+    metadata:
+      policy: parameterized-sql-only
+    pattern-either:
+      - pattern: $DB.query("..." + $X, ...)
+      - pattern: $DB.query(`...${$X}...`, ...)

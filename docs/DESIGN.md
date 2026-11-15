@@ -1,6 +1,6 @@
 # Rulebook Agents: design for v1
 
-Status: draft for review. Nothing here is built yet.
+Status: M0 and M1 built (`rulebook policies`, `rulebook review` locally). Everything from M2 on is still design.
 
 ## What it is
 
@@ -111,11 +111,12 @@ Notes:
 
 ## Flow 2: review (every pull request)
 
-1. Compute the changed lines from the PR's base...head diff.
-2. Run Semgrep with `.rulebook/rules/` on the changed files; keep alerts on changed lines; cap at `max_findings`.
-3. **Agent 1 (triage)**: for each alert, the rule, the policy text, and ±12 lines of the file with the flagged line marked. Real problem or noise, with a reason. Code under review is untrusted input (tagged, sanitised, injection phrases block a dismissal).
-4. **Agent 2 (explain and cite)**: for each real problem, the policy its rule came from is known in code (rule id -> policy id), so it is handed over, not searched for. Agent 2 writes a short explanation, quotes the sentence of the policy that applies, and suggests a fix. Code checks the quote is word for word in that policy; if not, retry once, then fall back to the policy's first sentence and say so.
-5. Post or update one PR comment (found by a hidden marker), and set the check result from `fail_on`.
+1. Read the policies and rules **from the base branch, not the PR**. Otherwise a PR could delete the rule it breaks, or edit a policy's text (which the agents treat as trusted) to carry instructions. Changes to `.rulebook/` itself are reviewed by people, like any code.
+2. Compute the changed lines from the PR's base...head diff.
+3. Run Semgrep with `.rulebook/rules/` on the changed files; keep alerts on changed lines; cap at `max_findings`.
+4. **Agent 1 (triage)**: for each alert, the rule, the policy text, and ±12 lines of the file with the flagged line marked. Real problem or noise, with a reason. Code under review is untrusted input (tagged, sanitised, injection phrases block a dismissal).
+5. **Agent 2 (explain and cite)**: for each real problem, the policy its rule came from is known in code (rule id -> policy id), so it is handed over, not searched for. Agent 2 writes a short explanation, quotes the sentence of the policy that applies, and suggests a fix. Code checks the quote is word for word in that policy; if not, retry once, then fall back to the policy's first sentence and say so.
+6. Post or update one PR comment (found by a hidden marker), and set the check result from `fail_on`.
 
 The comment:
 
@@ -201,9 +202,9 @@ examples/                  sample policies.md and workflow
 | M4 | `/rulebook file N` | Issues open with the right links; non-maintainers refused |
 | M5 | Image on GHCR, `v1` tag, Marketplace listing, docs, eval + red-team results | A stranger can install it from the README in 5 minutes |
 
-## Decisions needed before M0
+## Decisions made
 
-1. **Default `fail_on`:** `none` (advisory; recommended for a new tool) or `error`.
-2. **Default model:** Claude Haiku 5.5 (recommended: it is the one that wrote valid rules and resisted every attack in our tests).
-3. **License:** MIT is the usual choice for an Action.
-4. **Zach:** parts of this come from Docker Locker, which he co-wrote. Agree with him how to credit him (README credit, co-author, or contributor) before code is copied over.
+1. **Default `fail_on`:** `none` (advisory).
+2. **Default model:** Claude Haiku 5.5.
+3. **License:** MIT, copyright Hesham Rashid and Zachary Zambrana.
+4. **Credit:** Zachary agreed to the reuse; the README's Credits section says which parts started from whose code in Docker Locker (commit `c49d12c`).

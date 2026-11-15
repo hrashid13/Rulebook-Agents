@@ -20,5 +20,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
+      - run: pipx install semgrep==1.183.0
       - run: pytest -q
+        env:
+          RULEBOOK_REQUIRE_SEMGREP: "1"
       - run: rulebook policies examples/policies.md
