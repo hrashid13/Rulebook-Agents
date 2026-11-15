@@ -1,5 +1,5 @@
 name: Rulebook Agents
-description: Plain-English coding rules, turned into tested Semgrep rules and enforced on every pull request, with each finding quoting the rule it breaks.
+description: Write coding rules in plain English; get tested Semgrep rules and pull request reviews that quote the rule each problem breaks.
 author: Hesham Rashid and Zachary Zambrana
 branding:
   icon: book-open
@@ -47,8 +47,14 @@ outputs:
     description: Number of alerts dismissed as noise.
     value: ${{ steps.rulebook.outputs.dismissed }}
   status:
-    description: "clean, problems, skipped or failed."
+    description: "Review: clean, problems, skipped or failed. Rules: pull-request, up-to-date, blocked or failed."
     value: ${{ steps.rulebook.outputs.status }}
+  rules-written:
+    description: "Rules flow: number of rules written and tested."
+    value: ${{ steps.rulebook.outputs.rules_written }}
+  rules-failed:
+    description: "Rules flow: number of policy-language pairs that need a hand-written rule."
+    value: ${{ steps.rulebook.outputs.rules_failed }}
 
 runs:
   using: composite

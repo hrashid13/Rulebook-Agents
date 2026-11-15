@@ -1,24 +1,48 @@
 # Copy to .github/workflows/rulebook.yml in your repository.
-# Needs a repository secret ANTHROPIC_API_KEY (Settings > Secrets and variables > Actions),
-# and .rulebook/policies.md plus .rulebook/rules/ merged on your default branch.
+#
+# Needs:
+#   * a repository secret ANTHROPIC_API_KEY (Settings > Secrets and variables > Actions)
+#   * .rulebook/policies.md on your default branch
+#   * for the rules job: Settings > Actions > General > Workflow permissions >
+#     "Allow GitHub Actions to create and approve pull requests"
 name: Rulebook
 
 on:
-  pull_request:
+  pull_request:                                  # review every pull request
     types: [opened, synchronize, reopened, ready_for_review]
+  push:                                          # policies changed on main: write their rules
+    branches: [main]
+    paths: [.rulebook/policies.md, .rulebook/config.yml]
+  workflow_dispatch:                             # or run the rules job by hand (Actions tab)
 
-permissions:
-  contents: read          # read the code
-  pull-requests: write    # post and update the review comment
+permissions: {}                                  # each job asks only for what it needs
 
 jobs:
   review:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read          # read the code
+      pull-requests: write    # post and update the review comment
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # the review compares the PR with its base branch
+          fetch-depth: 0      # the review compares the PR with its base branch
       - uses: hrashid13/Rulebook-Agents@main   # pin a release tag (e.g. @v1) once there is one
         with:
           api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # fail-on: error   # make the check fail on error-severity problems
+          # fail-on: error    # make the check fail on error-severity problems
+
+  rules:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write         # push the rulebook/rules branch
+      pull-requests: write    # open the pull request with the new rules
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: hrashid13/Rulebook-Agents@main
+        with:
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}

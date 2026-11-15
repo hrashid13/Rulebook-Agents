@@ -36,7 +36,9 @@ def run_review(inputs: ReviewInputs, llm: LLMClient, *, guards: Guardrails = ALL
 
     if changed is None:
         changed = changed_lines(repo, inputs.base)
-    changed = {p: lines for p, lines in changed.items() if inputs.config.wants(p)}
+    # .rulebook/ is never reviewed: its rule test files contain violations on purpose.
+    changed = {p: lines for p, lines in changed.items()
+               if not p.startswith(".rulebook/") and inputs.config.wants(p)}
     report.changed_files = len(changed)
 
     if not inputs.rules.exists() or not any(inputs.rules.glob("*.y*ml")):
@@ -59,7 +61,7 @@ def run_review(inputs: ReviewInputs, llm: LLMClient, *, guards: Guardrails = ALL
         if not verdict.real:
             report.dismissed.append(Dismissal(alert, verdict.reason))
             continue
-        ex = explain(alert, policy, verdict.reason, llm, guards=guards)
+        ex = explain(alert, policy, verdict.reason, llm, guards=guards, repo=repo)
         report.retries += ex.attempts - 1
         report.findings.append(Finding(alert=alert, triage_reason=verdict.reason,
                                        explanation=ex.explanation, quote=ex.quote,

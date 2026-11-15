@@ -1,6 +1,6 @@
 # Rulebook Agents: design for v1
 
-Status: M0–M2 built (`rulebook policies`, `rulebook review`, and the review flow as a GitHub Action). M3 onward is still design.
+Status: M0–M3 built: `rulebook policies`, `rulebook rules`, `rulebook review`, and the rules and review flows as a GitHub Action. M4 onward is still design.
 
 ## What it is
 
@@ -108,6 +108,13 @@ Notes:
 - The repo must allow Actions to create PRs (Settings > Actions > "Allow GitHub Actions to create and approve pull requests"); the Action says so clearly if it is off.
 - A PR opened with the default token does not trigger other workflows. That is fine here: the review flow has nothing to scan in a rules-only PR.
 - `semgrep --test` also runs in the review flow, so a hand-edited rule that breaks its own test is reported.
+
+As built (M3):
+- Generated files are `.rulebook/rules/<policy id>-<language>.yml` and the test file `<policy id>-<language>.<ext>`. Code, not the model, sets each rule's id, language, severity and `metadata` (`policy`, `policy_fingerprint`, `generated_by`), and drops `fix` and `paths`.
+- The fingerprint decides what is regenerated: a rule is rewritten only when its policy changed, so edits made while reviewing the PR are kept. Deleting `metadata.generated_by` makes a rule hand-maintained: never touched again.
+- The branch is `rulebook/rules`, rebuilt from the default branch and force-pushed each run, unless someone pushed their own commits to it; then the job comments on the PR and leaves the branch alone.
+- The rules job runs only on the default branch, whose policies people have merged.
+- `.rulebook/` is never reviewed: its test files contain violations on purpose.
 
 ## Flow 2: review (every pull request)
 

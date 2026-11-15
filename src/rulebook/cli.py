@@ -3,7 +3,7 @@
     rulebook policies [PATH]   check policies.md and list what it defines
     rulebook review            review this branch's changes against the rules
     rulebook action            run inside GitHub Actions (used by action.yml)
-    rulebook rules             draft and test rules from policies.md (milestone M3)
+    rulebook rules             write and test Semgrep rules from policies.md
     rulebook file-issues       open issues for findings (milestone M4)
 
 Exit codes for `review`: 0 done, 1 problems at or above --fail-on, 2 setup error
@@ -89,6 +89,53 @@ def _review(args: argparse.Namespace) -> int:
     return 1 if should_fail(report, fail_on) else 0
 
 
+def _rules(args: argparse.Namespace) -> int:
+    from .ruleset import apply, detect_languages, make_plan, summary_markdown
+    from .synthesize import synthesize
+
+    repo = Path(args.repo).resolve()
+    rb = repo / ".rulebook"
+    try:
+        policies = load_policies(Path(args.policies) if args.policies else rb / "policies.md")
+        config = load_config(rb / "config.yml")
+    except (PolicyError, ConfigError) as exc:
+        _err(str(exc))
+        return 2
+    rules_dir = rb / "rules"
+    plan = make_plan(policies, rules_dir, config.languages or detect_languages(repo),
+                     only=set(args.only) if args.only else None)
+    for line in ([f"  new      {t.policy.id} ({t.language})" for t in plan.targets if t.reason == "new"]
+                 + [f"  changed  {t.policy.id} ({t.language})" for t in plan.targets if t.reason == "changed"]
+                 + [f"  remove   {r.rule_id}" for r in plan.remove]):
+        print(line)
+    print(f"{len(plan.targets)} rule(s) to write, {len(plan.remove)} to remove, "
+          f"{len(plan.unchanged)} up to date, {len(plan.hand_written)} hand-written.")
+    for problem in plan.problems:
+        print(f"  ! {problem}")
+    if args.dry_run or not plan.has_work:
+        return 0
+    try:
+        overrides = {} if os.environ.get("RULEBOOK_CACHE_DIR") else {"cache_dir": repo / ".rulebook-cache" / "llm"}
+        llm = LLMClient.from_env(model=config.model, **overrides)
+        results = []
+        for t in plan.targets:
+            print(f"Writing {t.policy.id} ({t.language})...", flush=True)
+            r = synthesize(t.policy, t.language, llm)
+            print(f"  {'passed' if r.ok else 'FAILED'} after {r.attempts} attempt(s)"
+                  + ("" if r.ok else f": {r.error}"))
+            results.append(r)
+    except (SemgrepNotInstalled, SemgrepError) as exc:
+        _err(str(exc))
+        return 4
+    except LLMError as exc:
+        _err(f"model error, stopped: {exc}")
+        return 3
+    touched = apply(plan, results, rules_dir)
+    print(f"\n{len(touched)} file(s) changed in {rules_dir.relative_to(repo).as_posix()}/. "
+          "Review them (git diff) and commit; they take effect once merged.")
+    return 1 if any(not r.ok for r in results) else 0
+
+
 def _action() -> int:
     from .action import main as action_main
     return action_main()
@@ -119,8 +166,14 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("action", help="run inside GitHub Actions (used by action.yml)")
     a.set_defaults(func=lambda args: _action())
 
-    for name, milestone, text in (("rules", "M3", "draft and test Semgrep rules from policies.md"),
-                                  ("file-issues", "M4", "open GitHub issues for findings")):
+    ru = sub.add_parser("rules", help="write and test Semgrep rules from policies.md")
+    ru.add_argument("--repo", default=".", help="repository folder (default: current folder)")
+    ru.add_argument("--policies", help="policies file (default: .rulebook/policies.md)")
+    ru.add_argument("--only", nargs="+", metavar="POLICY_ID", help="only these policies")
+    ru.add_argument("--dry-run", action="store_true", help="show what would change; call no model")
+    ru.set_defaults(func=_rules)
+
+    for name, milestone, text in (("file-issues", "M4", "open GitHub issues for findings"),):
         s = sub.add_parser(name, help=f"{text} (not built yet)")
         s.set_defaults(func=_not_built(milestone))
     return parser

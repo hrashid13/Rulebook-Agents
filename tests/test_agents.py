@@ -145,6 +145,17 @@ def test_legacy_single_fix_field_is_sorted_into_code_or_note(tmp_path):
     assert ex.fix_code == "" and ex.fix_note == "Use a parameterized query."
 
 
+def test_explain_sees_the_code_around_the_match(tmp_path):
+    code = "import logging\nlog = logging.getLogger(__name__)\n\ncur.execute('DELETE FROM t WHERE id=' + uid)\n"
+    a = alert_at(tmp_path, line=4, code=code)
+    llm = scripted_llm(tmp_path)
+    explain(a, POLICY, "r", llm, repo=tmp_path)
+    prompt = llm._backend.calls[0]["messages"][0]["content"]
+    assert "      2 | log = logging.getLogger(__name__)" in prompt and ">>     4 | cur.execute" in prompt
+    assert prompt.index("log = logging") > prompt.index("<untrusted_code>")       # still untrusted
+    assert "reuse its existing names" in llm._backend.calls[0]["system"]
+
+
 def test_invented_quote_gets_one_retry_then_code_picks_one(tmp_path):
     a = alert_at(tmp_path)
     bad = {"explanation": "Bad SQL.", "quote": "All SQL is forbidden.", "fix": ""}

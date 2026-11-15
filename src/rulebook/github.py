@@ -48,6 +48,9 @@ class GitHub:
             if resp.status_code == 403 and "not accessible" in message.lower():
                 hint = (" (the workflow's token lacks a permission: add `pull-requests: write` "
                         "under `permissions:`, or this is a pull request from a fork)")
+            elif resp.status_code == 403 and "not permitted to create" in message.lower():
+                hint = (" (turn on Settings > Actions > General > Workflow permissions > \"Allow GitHub "
+                        "Actions to create and approve pull requests\")")
             raise GitHubError(f"GitHub API {method} {url}: {resp.status_code} {message}{hint}",
                               resp.status_code)
         return resp
@@ -85,3 +88,22 @@ class GitHub:
                               json={"body": body}).json()
         return self._call("POST", f"/repos/{self.repository}/issues/{number}/comments",
                           json={"body": body}).json()
+
+    def comment(self, number: int, body: str) -> dict:
+        return self._call("POST", f"/repos/{self.repository}/issues/{number}/comments", json={"body": body}).json()
+
+    # ---- pull requests -----------------------------------------------------
+
+    def open_pull_request(self, branch: str) -> Optional[dict]:
+        owner = self.repository.split("/")[0]
+        pulls = self._call("GET", f"/repos/{self.repository}/pulls",
+                           params={"head": f"{owner}:{branch}", "state": "open"}).json()
+        return pulls[0] if pulls else None
+
+    def create_pull_request(self, *, branch: str, base: str, title: str, body: str) -> dict:
+        return self._call("POST", f"/repos/{self.repository}/pulls",
+                          json={"head": branch, "base": base, "title": title, "body": body}).json()
+
+    def update_pull_request(self, number: int, *, title: str, body: str) -> dict:
+        return self._call("PATCH", f"/repos/{self.repository}/pulls/{number}",
+                          json={"title": title, "body": body}).json()
