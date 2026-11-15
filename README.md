@@ -8,9 +8,29 @@ Write your team's coding rules in plain English. Rulebook Agents turns each one 
 
 Works with any language Semgrep supports, and any model with an Anthropic or OpenAI-compatible API.
 
-> **Status: early development.** Rule generation, reviews and filing issues work, locally and as a GitHub Action. The design is in [docs/DESIGN.md](docs/DESIGN.md).
+## How well it works
+
+Measured with Claude Haiku (the default) on hand-labelled data in Python, TypeScript, Java, Go and C#. Details, and how to rerun it, in [eval/](eval/README.md).
+
+| | First run | After fixing what it found |
+|---|---|---|
+| Real problems kept (38 alerts: 17 real, 21 noise) | 17/17 | 17/17 |
+| Noise dismissed | 14/21 | 21/21 |
+| Policy quoted word for word (after at most one retry) | 16/17 | 17/17 |
+| Rules written that pass their own test (13 policy and language pairs) | 10/13 | 13/13 |
+| Generated rules on held-out tests they never saw: precision / recall | 100% / 66% | 100% / 90% |
+| Prompt-injection attacks that got a real problem dismissed | 0/7 | 0/7 |
+| Live mentions, links or workflow commands in the posted output | 0 | 0 |
+
+How to read it:
+- **The first run found two real weaknesses,** and the prompts were fixed in general terms, not case by case. Agent 1 was calling a safe line a problem because a *different* line in the file broke the policy; it now judges only the flagged lines, and also sees the top of the file, where constants live. The rule writer was told to be "as precise as possible", so it filtered on variable names (a `Thread.Abort` rule that only matched variables called `thread`) and ran out of tokens; it now casts a wide net and leaves context to Agent 1, as the design intends.
+- **The second column was measured on the same cases that exposed the problems,** so treat it as a best case. The set is small: 38 alerts and 13 rules.
+- **Generated rules never flagged compliant code,** but they still miss some forms (the secrets rules most often), which is why every rule arrives as a pull request for a person to review.
+- **Haiku resisted every injection on its own,** with the guardrails on or off, so this run doesn't show what the guardrails add; the unit tests check that they work. All model output is escaped before posting either way.
 
 ## Use it on your pull requests (GitHub Action)
+
+Setup takes about five minutes.
 
 1. **Add your API key** as a repository secret named `ANTHROPIC_API_KEY` (Settings > Secrets and variables > Actions).
 2. **Let Actions open pull requests:** Settings > Actions > General > Workflow permissions > tick "Allow GitHub Actions to create and approve pull requests".
@@ -43,12 +63,14 @@ Good to know:
 
 ## Use it locally
 
-You need Python 3.11+, git, and [Semgrep](https://semgrep.dev) installed in its own environment:
+You need Python 3.11+, git, and [Semgrep](https://semgrep.dev), each installed in its own environment:
 
 ```
-uv tool install semgrep          # or: pipx install semgrep
-pip install -e ".[dev]"
+pipx install git+https://github.com/hrashid13/Rulebook-Agents@v1
+pipx install semgrep             # or: uv tool install semgrep
 ```
+
+To work on Rulebook Agents itself, clone the repo and run `pip install -e ".[dev]"`, then `pytest`.
 
 **Check your policies file** (clear errors with line numbers for anything it can't read):
 
@@ -102,14 +124,12 @@ Answers are cached in `.rulebook-cache/`, so running the review again on unchang
 
 ## Roadmap
 
-| Milestone | What |
-|---|---|
-| M0 | Package, CLI, `policies.md` parser, CI (done) |
-| M1 | `rulebook review` on a local branch, in several languages (done) |
-| M2 | The review flow as a GitHub Action: PR comment and check (done) |
-| M3 | `rulebook rules`: policies to tested Semgrep rules, opened as a PR (done) |
-| M4 | `/rulebook file N`: findings to GitHub issues (done) |
-| M5 | Published image, `v1` release, GitHub Marketplace listing |
+v1 is complete: policies to tested rules (opened as a PR), reviews on every pull request, and issues on command. The design and the reasoning behind it are in [docs/DESIGN.md](docs/DESIGN.md); changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+Ideas after v1:
+- a one-off scan of the whole repository, for code that existed before a rule did;
+- reporting hand-edited rules that no longer pass `semgrep --test` in the review;
+- a published container image and a PyPI package, if install time or demand calls for them.
 
 ## Credits
 

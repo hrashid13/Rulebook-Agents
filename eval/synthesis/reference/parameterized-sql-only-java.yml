@@ -1,0 +1,13 @@
+rules:
+  - id: parameterized-sql-only-java
+    languages: [java]
+    severity: ERROR
+    message: SQL built from strings
+    patterns:
+      - pattern-either:
+          - pattern: $S.$M("..." + $X, ...)
+          - pattern: $S.$M("..." + $X + "...", ...)
+          - pattern: $S.$M(String.format(...), ...)
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(executeQuery|executeUpdate|execute|prepareStatement)$

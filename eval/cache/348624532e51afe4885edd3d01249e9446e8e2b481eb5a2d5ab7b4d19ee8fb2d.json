@@ -1,0 +1,23 @@
+{
+  "key": "348624532e51afe4885edd3d01249e9446e8e2b481eb5a2d5ab7b4d19ee8fb2d",
+  "request": {
+    "model": "claude-haiku-5-5",
+    "system": "You write Semgrep rules that enforce a team's written coding policy, and a test file that proves each rule works.\n\nRules:\n- Use structural patterns: pattern, pattern-either, patterns with pattern-not or pattern-inside, and metavariables such as $X, $FUNC, $ARGS. Use pattern-regex only when the policy is about text, not code structure.\n- Cast a wide net over the construct the policy forbids. A reviewer looks at every match in context and dismisses the harmless ones, so a missed violation is worse than an extra match.\n- Leave out only compliant code that looks different in the code itself, such as a query with placeholders and separate parameters, or a value read from the environment. Do not try to judge intent: do not filter on variable or argument names (a thread need not be called `thread`), and do not use taint mode with guessed input sources. Exceptions that depend on context, such as constants, test code or what a hash is used for, are the reviewer's job.\n- Cover the common forms: the call as a statement and inside an assignment or return, on any receiver or expression, and each way the language builds strings (concatenation, formatting, interpolation) where that matters.\n- Keep the rule short: a few patterns, not dozens.\n- The message is one sentence telling the developer what is wrong.\n\nTest file:\n- A complete, valid source file in the target language that parses on its own.\n- On the line directly above each line that must match, put a comment with `ruleid: <rule id>`. Include three to five violations in different forms.\n- On the line directly above each line that must NOT match, put a comment with `ok: <rule id>`. Include two to four compliant cases that look similar to the violations.\n- Keep it under 50 lines: no long setup, no explanations.\n\nReply with exactly two fenced code blocks and nothing else: first ```yaml with the rule file (a `rules:` list with exactly one rule), then a block with the test file.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Policy \"No hardcoded secrets\" (severity error, category security):\nAPI keys, passwords, tokens and connection strings with credentials must never appear in source code. Load them from environment variables or a secret manager. Obvious fake values in test code are fine.\n\nWrite one Semgrep rule for Go code with rule id `no-hardcoded-secrets-go`, and a Go test file (it will be saved as `no-hardcoded-secrets-go.go`). In the test file, mark lines with `// ruleid: no-hardcoded-secrets-go` and `// ok: no-hardcoded-secrets-go` comments."
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 8192
+  },
+  "response": {
+    "text": "```yaml\nrules:\n  - id: no-hardcoded-secrets-go\n    languages: [go]\n    severity: ERROR\n    message: Hardcoded credential found in source; load secrets from environment variables or a secret manager instead.\n    metadata:\n      category: security\n    patterns:\n      - pattern-either:\n          - pattern: $X := $V\n          - pattern: var $X = $V\n          - pattern: $X = $V\n          - pattern: $K: $V\n          - pattern: return $V\n          - pattern: $F(..., $V, ...)\n      - metavariable-regex:\n          metavariable: $V\n          regex: '^[\"`][^\"`]*(AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|xox[abprs]-[A-Za-z0-9-]{10,}|sk_live_[0-9A-Za-z]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY|[a-zA-Z][a-zA-Z0-9+.-]*://[^\\s:/@\"`]+:[^\\s@/\"`]+@|Bearer [A-Za-z0-9._~+/=-]{16,})'\n```\n\n```go\npackage main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\ntype Config struct {\n\tToken string\n}\n\n// ruleid: no-hardcoded-secrets-go\nvar awsKey = \"AKIAABCDEFGHIJKLMNOP\"\n\n// ruleid: no-hardcoded-secrets-go\nvar dbURL = \"postgres://app:S3cr3tPass@db.internal:5432/app\"\n\n// ok: no-hardcoded-secrets-go\nvar greeting = \"hello world\"\n\n// ok: no-hardcoded-secrets-go\nvar placeholder = \"<API_KEY>\"\n\n// ok: no-hardcoded-secrets-go\nvar localDSN = \"postgres://localhost:5432/app\"\n\nfunc privateKey() string {\n\t// ruleid: no-hardcoded-secrets-go\n\treturn \"-----BEGIN RSA PRIVATE KEY-----\"\n}\n\nfunc main() {\n\t// ok: no-hardcoded-secrets-go\n\ttoken := os.Getenv(\"API_TOKEN\")\n\t// ruleid: no-hardcoded-secrets-go\n\tcfg := Config{Token: \"ghp_abcdefghijklmnopqrstuvwxyz0123456789\"}\n\tfmt.Println(token, cfg.Token, privateKey(), dbURL, awsKey, greeting, placeholder, localDSN)\n}\n```",
+    "stop_reason": "end_turn",
+    "model": "claude-haiku-5-5",
+    "input_tokens": 827,
+    "output_tokens": 7487,
+    "latency_s": 32.291
+  }
+}

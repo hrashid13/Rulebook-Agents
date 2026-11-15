@@ -44,6 +44,23 @@ def test_prompt_keeps_policy_trusted_and_code_untrusted(tmp_path):
     assert POLICY.text in policy_part and "app/db.py" in code_part and "</untrusted_code>" in code_part
 
 
+def test_top_of_the_file_is_shown_when_out_of_view(tmp_path):
+    """Constants are usually at the top; without them a constant looks like user input."""
+    code = "TABLE = 'users'\nimport db\n" + "\n" * 30 + "cur.execute('SELECT * FROM ' + TABLE)\n"
+    a = alert_at(tmp_path, line=33, code=code)
+    from rulebook.triage import surrounding_code
+    out = surrounding_code(tmp_path, a)
+    assert out.startswith("       1 | TABLE = 'users'") and "\n     ... |\n" in out
+    assert ">>    33 | cur.execute" in out
+    near = alert_at(tmp_path, path="app/near.py", line=3)     # window already starts at line 1
+    assert "..." not in surrounding_code(tmp_path, near)
+
+
+def test_triage_judges_only_the_flagged_lines():
+    from rulebook.triage import SYSTEM_PROMPT
+    assert "Judge only the flagged lines" in SYSTEM_PROMPT
+
+
 def test_flagged_lines_are_marked(tmp_path):
     a = alert_at(tmp_path)
     llm = scripted_llm(tmp_path)

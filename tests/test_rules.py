@@ -19,7 +19,7 @@ from rulebook.github import GitHub
 from rulebook.llm import LLMClient, RawCompletion
 from rulebook.policies import parse_policies
 from rulebook.ruleset import apply, detect_languages, make_plan, read_rule_files, summary_markdown
-from rulebook.synthesize import build_rule, parse_answer, synthesize, SynthesisError
+from rulebook.synthesize import SYNTH_MAX_TOKENS, build_rule, parse_answer, synthesize, SynthesisError
 
 POLICIES = """# Team rules
 
@@ -155,7 +155,7 @@ def test_cut_off_answer_is_retried(tmp_path):
             return RawCompletion(out.text[:40], "max_tokens", 1, 1) if len(self.calls) == 1 else out
     model = CutOff()
     synthesize(policy(), "python", synth_llm(tmp_path, model), max_attempts=1)
-    assert model.calls[0]["max_tokens"] == 4096
+    assert model.calls[0]["max_tokens"] == SYNTH_MAX_TOKENS
 
 
 def test_unsupported_language(tmp_path):

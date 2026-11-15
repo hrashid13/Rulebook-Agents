@@ -1,0 +1,23 @@
+{
+  "key": "7a16408536d35757df671ad287f533d7028ffc5516e67072a1da5894c7317dfc",
+  "request": {
+    "model": "claude-haiku-5-5",
+    "system": "You write Semgrep rules that enforce a team's written coding policy, and a test file that proves each rule works.\n\nRules:\n- Use structural patterns: pattern, pattern-either, patterns with pattern-not or pattern-inside, and metavariables such as $X, $FUNC, $ARGS. Use pattern-regex only when the policy is about text, not code structure.\n- Cast a wide net over the construct the policy forbids. A reviewer looks at every match in context and dismisses the harmless ones, so a missed violation is worse than an extra match.\n- Leave out only compliant code that looks different in the code itself, such as a query with placeholders and separate parameters, or a value read from the environment. Do not try to judge intent: do not filter on variable or argument names (a thread need not be called `thread`), and do not use taint mode with guessed input sources. Exceptions that depend on context, such as constants, test code or what a hash is used for, are the reviewer's job.\n- Cover the common forms: the call as a statement and inside an assignment or return, on any receiver or expression, and each way the language builds strings (concatenation, formatting, interpolation) where that matters.\n- Keep the rule short: a few patterns, not dozens.\n- The message is one sentence telling the developer what is wrong.\n\nTest file:\n- A complete, valid source file in the target language that parses on its own.\n- On the line directly above each line that must match, put a comment with `ruleid: <rule id>`. Include three to five violations in different forms.\n- On the line directly above each line that must NOT match, put a comment with `ok: <rule id>`. Include two to four compliant cases that look similar to the violations.\n- Keep it under 50 lines: no long setup, no explanations.\n\nReply with exactly two fenced code blocks and nothing else: first ```yaml with the rule file (a `rules:` list with exactly one rule), then a block with the test file.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Policy \"No Thread.Abort\" (severity warning, category bug risk):\nDo not call Thread.Abort() in managed code. Use a CancellationToken for cooperative cancellation.\n\nWrite one Semgrep rule for C# code with rule id `no-thread-abort-csharp`, and a C# test file (it will be saved as `no-thread-abort-csharp.cs`). In the test file, mark lines with `// ruleid: no-thread-abort-csharp` and `// ok: no-thread-abort-csharp` comments."
+      }
+    ],
+    "temperature": 0.0,
+    "max_tokens": 8192
+  },
+  "response": {
+    "text": "```yaml\nrules:\n  - id: no-thread-abort-csharp\n    languages: [csharp]\n    severity: WARNING\n    message: Do not call Thread.Abort(); use a CancellationToken for cooperative cancellation.\n    metadata:\n      category: bug-risk\n    pattern-either:\n      - pattern: $X.Abort(...)\n      - pattern: $X?.Abort(...)\n```\n\n```csharp\nusing System;\nusing System.Threading;\nusing System.Threading.Tasks;\n\nclass Worker\n{\n    static void Stop(Thread worker, CancellationTokenSource cts)\n    {\n        // ruleid: no-thread-abort-csharp\n        worker.Abort();\n        // ok: no-thread-abort-csharp\n        cts.Cancel();\n        // ok: no-thread-abort-csharp\n        worker.Join();\n    }\n\n    static void Kill(Thread t)\n    {\n        // ruleid: no-thread-abort-csharp\n        t?.Abort();\n    }\n\n    static Task Schedule(Thread t) =>\n        // ruleid: no-thread-abort-csharp\n        Task.Run(() => t.Abort());\n\n    static bool Check(Thread t, CancellationToken token)\n    {\n        // ok: no-thread-abort-csharp\n        t.Interrupt();\n        // ok: no-thread-abort-csharp\n        return token.IsCancellationRequested;\n    }\n}\n```",
+    "stop_reason": "end_turn",
+    "model": "claude-haiku-5-5",
+    "input_tokens": 802,
+    "output_tokens": 2495,
+    "latency_s": 9.948
+  }
+}

@@ -1,0 +1,9 @@
+rules:
+  - id: parameterized-sql-only-csharp
+    languages: [csharp]
+    severity: ERROR
+    message: SQL built from strings
+    pattern-either:
+      - pattern: new SqlCommand("..." + $X + "...", ...)
+      - pattern: new SqlCommand($"...", ...)
+      - pattern: new SqlCommand(string.Format(...), ...)

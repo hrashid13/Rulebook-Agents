@@ -29,7 +29,7 @@ from .policies import Policy
 from .semgrep import SemgrepError, run_semgrep_test
 
 MAX_ATTEMPTS = 3
-SYNTH_MAX_TOKENS = 4096
+SYNTH_MAX_TOKENS = 8192
 GENERATOR = "rulebook-agents"
 
 # Semgrep language -> (test file extension, comment marker, name the model knows it by)
@@ -51,13 +51,17 @@ SYSTEM_PROMPT = """You write Semgrep rules that enforce a team's written coding 
 
 Rules:
 - Use structural patterns: pattern, pattern-either, patterns with pattern-not or pattern-inside, and metavariables such as $X, $FUNC, $ARGS. Use pattern-regex only when the policy is about text, not code structure.
-- Match what the policy forbids, as precisely as you can: catch the real violations, and do not flag the compliant code the policy allows.
+- Cast a wide net over the construct the policy forbids. A reviewer looks at every match in context and dismisses the harmless ones, so a missed violation is worse than an extra match.
+- Leave out only compliant code that looks different in the code itself, such as a query with placeholders and separate parameters, or a value read from the environment. Do not try to judge intent: do not filter on variable or argument names (a thread need not be called `thread`), and do not use taint mode with guessed input sources. Exceptions that depend on context, such as constants, test code or what a hash is used for, are the reviewer's job.
+- Cover the common forms: the call as a statement and inside an assignment or return, on any receiver or expression, and each way the language builds strings (concatenation, formatting, interpolation) where that matters.
+- Keep the rule short: a few patterns, not dozens.
 - The message is one sentence telling the developer what is wrong.
 
 Test file:
 - A complete, valid source file in the target language that parses on its own.
-- On the line directly above each line that must match, put a comment with `ruleid: <rule id>`. Include at least two different violations.
-- On the line directly above each line that must NOT match, put a comment with `ok: <rule id>`. Include at least two compliant cases that look similar to the violations.
+- On the line directly above each line that must match, put a comment with `ruleid: <rule id>`. Include three to five violations in different forms.
+- On the line directly above each line that must NOT match, put a comment with `ok: <rule id>`. Include two to four compliant cases that look similar to the violations.
+- Keep it under 50 lines: no long setup, no explanations.
 
 Reply with exactly two fenced code blocks and nothing else: first ```yaml with the rule file (a `rules:` list with exactly one rule), then a block with the test file."""
 

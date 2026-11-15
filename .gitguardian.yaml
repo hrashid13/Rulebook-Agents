@@ -1,0 +1,6 @@
+# The evaluation contains fake keys, tokens and passwords on purpose (they are what the
+# secrets policy is tested on), and its saved model answers quote them.
+version: 2
+secret:
+  ignored-paths:
+    - "eval/**"

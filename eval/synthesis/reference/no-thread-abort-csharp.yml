@@ -1,0 +1,6 @@
+rules:
+  - id: no-thread-abort-csharp
+    languages: [csharp]
+    severity: WARNING
+    message: Thread.Abort
+    pattern: $T.Abort()

@@ -1,0 +1,11 @@
+rules:
+  - id: parameterized-sql-only-python
+    languages: [python]
+    severity: ERROR
+    message: SQL built from strings
+    patterns:
+      - pattern-either:
+          - pattern: $C.execute($A + $B, ...)
+          - pattern: $C.execute(f"...", ...)
+          - pattern: $C.execute($S % $V, ...)
+          - pattern: $C.execute($S.format(...), ...)

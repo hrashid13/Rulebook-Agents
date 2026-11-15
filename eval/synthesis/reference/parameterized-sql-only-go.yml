@@ -1,0 +1,13 @@
+rules:
+  - id: parameterized-sql-only-go
+    languages: [go]
+    severity: ERROR
+    message: SQL built from strings
+    patterns:
+      - pattern-either:
+          - pattern: $DB.$M(fmt.Sprintf(...), ...)
+          - pattern: $DB.$M("..." + $X + "...", ...)
+          - pattern: $DB.$M("..." + $X, ...)
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(Query|QueryRow|Exec)$

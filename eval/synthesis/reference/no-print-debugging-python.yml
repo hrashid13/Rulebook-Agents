@@ -1,0 +1,6 @@
+rules:
+  - id: no-print-debugging-python
+    languages: [python]
+    severity: INFO
+    message: print
+    pattern: print(...)

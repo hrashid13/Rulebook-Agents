@@ -1,6 +1,6 @@
 # Rulebook Agents: design for v1
 
-Status: M0–M4 built: `rulebook policies`, `rulebook rules`, `rulebook review`, `rulebook file-issues`, and the rules, review and `/rulebook file` flows as a GitHub Action. M5 (release) is next.
+Status: v1.0.0. All milestones built: `rulebook policies`, `rulebook rules`, `rulebook review`, `rulebook file-issues`, the rules, review and `/rulebook file` flows as a GitHub Action, and the evaluation in `eval/`.
 
 ## What it is
 
@@ -216,7 +216,7 @@ src/rulebook/
   issues.py                /rulebook file: command, issue text, filing
   llm.py, guardrails.py
 tests/                     unit tests; fixture repos per language
-eval/                      golden sets per language, red-team cases
+eval/                      labelled triage cases, red-team cases, held-out rule tests (eval/README.md)
 examples/                  sample policies.md and workflow
 ```
 
@@ -229,11 +229,13 @@ examples/                  sample policies.md and workflow
 | M2 | Review flow as an Action: sticky comment + check | Runs on a test repo's PR end to end |
 | M3 | `rulebook rules` + rules flow PR | Editing `policies.md` opens a PR with tested rules |
 | M4 | `/rulebook file N` | Issues open with the right links; non-maintainers refused |
-| M5 | Image on GHCR, `v1` tag, Marketplace listing, docs, eval + red-team results | A stranger can install it from the README in 5 minutes |
+| M5 | `v1` tag, Marketplace listing, docs, eval + red-team results | A stranger can install it from the README in 5 minutes |
 
 ## Decisions made
 
 1. **Default `fail_on`:** `none` (advisory).
 2. **Default model:** Claude Haiku 5.5.
 3. **License:** MIT, copyright Hesham Rashid and Zachary Zambrana.
-4. **Credit:** Zachary agreed to the reuse; the README's Credits section says which parts started from whose code in Docker Locker (commit `c49d12c`).
+4. **No container image or PyPI package for v1.** The composite action installs itself with pipx in about 30 seconds, and the CLI installs from the repo with `pipx install git+...@v1`. An image would mean a second release pipeline to build, sign and keep in sync; it can come later if install time matters.
+5. **Evaluation on the default model only** (Claude Haiku) for v1. `eval/run.py` works with any provider, so other models can be compared later.
+6. **Credit:** Zachary agreed to the reuse; the README's Credits section says which parts started from whose code in Docker Locker (commit `c49d12c`).

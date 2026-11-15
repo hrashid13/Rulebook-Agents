@@ -1,5 +1,5 @@
 name: Rulebook Agents
-description: Write coding rules in plain English; get tested Semgrep rules and pull request reviews that quote the rule each problem breaks.
+description: Plain-English coding rules, turned into tested Semgrep rules and enforced on every pull request.
 author: Hesham Rashid and Zachary Zambrana
 branding:
   icon: book-open
