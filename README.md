@@ -8,6 +8,8 @@ Write your team's coding rules in plain English. Rulebook Agents turns each one 
 
 Works with any language Semgrep supports, and any model with an Anthropic or OpenAI-compatible API.
 
+Original project stems from Text Analytics 6564 class final project: https://github.com/hrashid13/ISM-6564-Final-Project-Docker-Locker 
+
 ## How well it works
 
 Measured with Claude Haiku (the default) on hand-labelled data in Python, TypeScript, Java, Go and C#. Details, and how to rerun it, in [eval/](eval/README.md).
